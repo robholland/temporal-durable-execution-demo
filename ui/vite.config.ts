@@ -3,7 +3,7 @@ import { type ViteDevServer, defineConfig } from 'vite';
 import { Server } from 'socket.io';
 import { createConnection, getEnv } from './src/lib/server/temporal';
 import { Client } from '@temporalio/client';
-import type { DeployMsg, EmailMsg, NewsletterInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg } from './src/lib/types';
+import type { DeployMsg, EmailMsg, TransactionInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg } from './src/lib/types';
 import { getAllScenarios, getScenario } from '../workflows/src/scenarios';
 import fs from 'fs';
 import proto from '@temporalio/proto';
@@ -57,7 +57,17 @@ const webSocketServer = {
 			}
 
 			try {
-				return fs.readFileSync(`../workflows/src/${scenario.workflowFile}`, 'utf-8');
+				const fullCode = fs.readFileSync(`../workflows/src/${scenario.workflowFile}`, 'utf-8');
+				
+				// Find the main workflow function and elide everything before it
+				const workflowFunctionMatch = fullCode.match(/(export async function \w+Workflow[^{]*\{[\s\S]*)/);
+				
+				if (workflowFunctionMatch) {
+					const workflowFunction = workflowFunctionMatch[1];
+					return `// ... imports and setup ...\n\n${workflowFunction}`;
+				}
+				
+				return fullCode; // Fallback to full code if pattern not found
 			} catch (err) {
 				console.error(`Failed to read scenario ${scenarioNumber} workflow:`, err);
 				return '';
@@ -88,8 +98,8 @@ const webSocketServer = {
 		loadScenarioWorkflow(currentScenario);
 
 		io.on('connection', (socket) => {
-			socket.on('register', async ({ email }: { email: string }, cb) => {
-				const wfId = `newsletter-${email}`;
+			socket.on('register', async ({ customerEmail, productName, amount, shippingAddress }: TransactionInput, cb) => {
+				const wfId = `purchase-${customerEmail}-${Date.now()}`;
 				const scenario = getScenario(currentScenario);
 
 				if (!scenario) {
@@ -98,18 +108,18 @@ const webSocketServer = {
 				}
 
 				sdkClient.workflow.start(
-					'Newsletter',
+					'PurchaseWorkflow',
 					{
 						workflowId: wfId,
 						taskQueue: 'demo',
 						workflowTaskTimeout: '5 seconds',
-						args: [{ email } as NewsletterInput],
+						args: [{ customerEmail, productName, amount, shippingAddress } as TransactionInput],
 						retry: scenario.retryPolicy
 					}
 				)
 				.then((handle) => {
-					console.log('Campaign started');
-					socket.emit('campaign:started');
+					console.log('Transaction started');
+					socket.emit('transaction:started');
 					cb({});
 
 					poller = setInterval(async () => {
@@ -132,15 +142,15 @@ const webSocketServer = {
 
 					handle.result()
 					.then(() => {
-						console.log('Campaign completed');
-						socket.emit('campaign:completed');
+						console.log('Transaction completed');
+						socket.emit('transaction:completed');
 
 						clearInterval(poller);
 						poller = undefined;
 					})
 					.catch((err) => {
-						console.log('Campaign failed', err);
-						socket.emit('campaign:failed');
+						console.log('Transaction failed', err);
+						socket.emit('transaction:failed');
 
 						clearInterval(poller);
 						poller = undefined;
@@ -174,7 +184,7 @@ const webSocketServer = {
 				// Send the workflow code immediately
 				const workflowCode = getScenarioWorkflowCode(currentScenario);
 				socket.emit('workflow:code', {
-					name: 'Newsletter',
+					name: 'PurchaseWorkflow',
 					code: workflowCode,
 					line: 0, // No highlighted line initially
 				} as WorkflowCodeMsg);
@@ -184,7 +194,7 @@ const webSocketServer = {
 
 			socket.on('deploy', async (msg: DeployMsg) => {
 				if (msg.email !== '') {
-					resetWorkflowExecution(`newsletter-${msg.email}`);
+					resetWorkflowExecution(`purchase-${msg.email}-*`);
 				}
 				loadScenarioWorkflow(currentScenario);
 				console.log('Deploy');
@@ -199,6 +209,42 @@ const webSocketServer = {
 					console.log('Email failed', msg);
 					io.emit('email:failed', msg);
 					cb({ error: 'Email service is down' });
+				}
+			});
+
+			socket.on('transaction', async (msg: TransactionMsg, cb) => {
+				const { step } = msg;
+				
+				// Simulate some business logic failures vs network failures
+				const shouldFail = Math.random() < 0.3; // 30% chance of failure
+				const isBusinessLogicFailure = Math.random() < 0.5; // 50% of failures are business logic
+				
+				if (shouldFail) {
+					if (isBusinessLogicFailure && step.stepName === 'Charge Card') {
+						// Business logic failure - insufficient funds or declined card
+						const failedStep = { ...step, status: 'failed' as const, details: 'Card declined - insufficient credit limit' };
+						console.log('Transaction step failed (business logic)', failedStep);
+						io.emit('transaction:step', { step: failedStep });
+						cb({ error: 'Card declined' });
+					} else if (isBusinessLogicFailure && step.stepName === 'Reserve Stock') {
+						// Business logic failure - out of stock
+						const failedStep = { ...step, status: 'failed' as const, details: 'Out of stock - item no longer available' };
+						console.log('Transaction step failed (business logic)', failedStep);
+						io.emit('transaction:step', { step: failedStep });
+						cb({ error: 'Out of stock' });
+					} else {
+						// Network/service failure - should be retried
+						const failedStep = { ...step, status: 'failed' as const, details: `${step.stepName} service temporarily unavailable` };
+						console.log('Transaction step failed (network)', failedStep);
+						io.emit('transaction:step', { step: failedStep });
+						cb({ error: 'Service temporarily unavailable' });
+					}
+				} else {
+					// Success
+					const completedStep = { ...step, status: 'completed' as const };
+					console.log('Transaction step completed', completedStep);
+					io.emit('transaction:step', { step: completedStep });
+					cb({});
 				}
 			});
 		});

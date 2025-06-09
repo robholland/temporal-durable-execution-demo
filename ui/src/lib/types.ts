@@ -33,6 +33,25 @@ export type ScenariosListMsg = {
   scenarios: ScenarioConfig[];
 }
 
+export type TransactionInput = {
+  customerEmail: string;
+  productName: string;
+  amount: number;
+  shippingAddress: string;
+}
+
+export type TransactionStep = {
+  stepName: string;
+  time: string;
+  status: 'started' | 'completed' | 'failed';
+  details?: string;
+  amount?: number;
+}
+
+export type TransactionMsg = {
+  step: TransactionStep;
+}
+
 export type NewsletterInput = {
   email: string;
 }
