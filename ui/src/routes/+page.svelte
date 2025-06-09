@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { io, Socket } from 'socket.io-client';
-	import { Navbar, NavBrand, NavLi, NavUl, NavHamburger, Dropdown, Spinner, Button, DropdownDivider, Radio } from 'flowbite-svelte';
+	import { Navbar, NavBrand, NavLi, NavUl, NavHamburger, Spinner, Button } from 'flowbite-svelte';
 	import { Toggle } from 'flowbite-svelte';
 	import { Timeline, TimelineItem } from 'flowbite-svelte';
-  import { EnvelopeOpenSolid, ChevronDownOutline, ExclamationCircleSolid, EnvelopeSolid, UserCircleSolid, FlagSolid } from 'flowbite-svelte-icons';
+  import { EnvelopeOpenSolid, ExclamationCircleSolid, EnvelopeSolid, UserCircleSolid, FlagSolid, ChevronLeftOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
-	import type { EmailMsg, ToggleEmailServiceMsg, RetryLevel, RetryLevelMsg, WorkflowCodeMsg, DeployMsg } from '../lib/types';
+	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg } from '../lib/types';
 	import logo from '$lib/images/Temporal_Symbol_dark_1_2x.png';
 	import Highlight, { LineNumbers } from 'svelte-highlight';
 	import typescript from 'svelte-highlight/languages/typescript';
@@ -16,10 +16,9 @@
 	$: activeUrl = $page.url.pathname;
 
 	let emailService: boolean = true;
-	let retryLevel: RetryLevel = "temporal";
-
-	let submitted = false;
 	let active = false;
+	let currentScenario = 1;
+	let scenarios: ScenarioConfig[] = [];
 
 	type CampaignEventStatus = "started" | "completed" | "failed";
 
@@ -38,16 +37,39 @@
 
 	const reset = () => {
 		email = "";
-		submitted = false;
 		active = false;
 		events = [];
+	}
+
+	const nextScenario = () => {
+		if (currentScenario < scenarios.length) {
+			currentScenario++;
+			loadScenario();
+		}
+	}
+
+	const prevScenario = () => {
+		if (currentScenario > 1) {
+			currentScenario--;
+			loadScenario();
+		}
+	}
+
+	const loadScenario = () => {
+		reset();
+		
+		// Update server state
+		socket?.emit('loadScenario', { scenario: currentScenario } as ScenarioMsg);
+	}
+
+	const getCurrentScenarioConfig = (): ScenarioConfig | undefined => {
+		return scenarios.find(s => s.scenarioNumber === currentScenario);
 	}
 
 	let socket: Socket;
 
 	const register = async () => {
 		if (email !== "") {
-			submitted = true;
 			active = true;
 			await socket.emitWithAck('register', { email });
 		}
@@ -57,12 +79,6 @@
 		const target = event.target as HTMLInputElement;
 		console.log('Toggling email service', target.checked);
 		socket.emit('toggleEmailService', { status: target.checked } as ToggleEmailServiceMsg);
-	}
-
-	const toggleRetryLevel = async (event: Event) => {
-		const target = event.target as HTMLInputElement;
-		console.log('Toggling retry level', target.value);
-		socket.emit('toggleRetryLevel', { level: target.value } as RetryLevelMsg);
 	}
 
 	const deploy = async () => {
@@ -75,7 +91,11 @@
 
 		socket.on('workflow:code', (msg: WorkflowCodeMsg) => {
 			workflowCode = msg.code;
-			highlightLines = [msg.line - 1];
+			if (msg.line > 0) {
+				highlightLines = [msg.line - 1];
+			} else {
+				highlightLines = [];
+			}
 		});
 
 		socket.on('email:completed', (msg: EmailMsg) => {
@@ -111,12 +131,25 @@
 			emailService = status;
 		});
 
-		socket.on('retryLevel', (msg: RetryLevelMsg) => {
-			retryLevel = msg.level;
+		socket.on('scenario', (msg: ScenarioMsg) => {
+			currentScenario = msg.scenario;
+		});
+
+		socket.on('scenarios', (msg: ScenariosListMsg) => {
+			scenarios = msg.scenarios;
+			console.log('Loaded scenarios:', scenarios);
 		});
 
 		socket.emit('getEmailServiceStatus');
-		socket.emit('getRetryLevel');
+		socket.emit('getScenario');
+		socket.emit('getScenarios');
+
+		// Load initial scenario after scenarios are loaded
+		setTimeout(() => {
+			if (scenarios.length > 0) {
+				loadScenario();
+			}
+		}, 100);
 	});
 </script>
 
@@ -136,61 +169,59 @@
 		<NavUl {activeUrl} class="mr-4">
 			<NavLi href="/" on:click={reset}>Reset</NavLi>
 			<NavLi href="http://localhost:8233/">Temporal UI</NavLi>
-			<NavLi class="cursor-pointer">
-				Settings<ChevronDownOutline class="w-6 h-6 ms-2 text-primary-800 dark:text-white inline" />
-			</NavLi>
-			<Dropdown placement="bottom-end">
-				<li class="py-2 px-4">
-					<Toggle bind:checked={emailService} on:change={toggleEmailService}>Email Service</Toggle>
-				</li>
-				<DropdownDivider />
-				<li class="py-2 px-4">
-					<Button color="blue" on:click={deploy}>Deploy</Button>
-				</li>
-				<DropdownDivider />
-				<li class="py-2 px-4">
-					<fieldset>
-						<legend class="text-sm font-medium text-gray-900 dark:text-white">Resilience</legend>
-						<Radio name="durability" value="none" bind:group={retryLevel} on:change={toggleRetryLevel}>None</Radio>
-						<Radio name="durability" value="workflow" bind:group={retryLevel} on:change={toggleRetryLevel}>Workflow</Radio>
-						<Radio name="durability" value="activity" bind:group={retryLevel} on:change={toggleRetryLevel}>Activity</Radio>
-						<Radio name="durability" value="temporal" bind:group={retryLevel} on:change={toggleRetryLevel}>Temporal</Radio>
-					</fieldset>
-				</li>
-			</Dropdown>
 		</NavUl>
 	</Navbar>
 
 	<div class="mt-20">
-		{#if !submitted}
-			<section transition:slide class="bg-white dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
-				<div class="py-6 px-4 mx-auto max-w-screen-xl lg:py-12 lg:px-6">
-						<div class="mx-auto max-w-screen-md sm:text-center">
-								<h2 class="mb-4 text-3xl tracking-tight font-extrabold text-gray-900 sm:text-4xl dark:text-white">Sign up for our newsletter</h2>
-								<p class="mx-auto mb-8 max-w-2xl font-light text-gray-500 md:mb-12 sm:text-xl dark:text-gray-400">Stay up to date with the roadmap progress, announcements and exclusive discounts by signing up to our newsletter.</p>
-								<form action="#">
-									<div class="items-center mx-auto mb-3 space-y-4 max-w-screen-sm sm:flex sm:space-y-0">
-										<div class="relative w-full">
-												<label for="email" class="hidden mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Email address</label>
-												<div class="flex absolute inset-y-0 left-0 items-center pl-3 pointer-events-none">
-														<svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"></path><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"></path></svg>
-												</div>
-												<input class="block p-3 pl-10 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 sm:rounded-none sm:rounded-l-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter your email" type="email" bind:value={email} required>
-										</div>
-										<div>
-												<button type="submit" class="py-3 px-5 w-full text-sm font-medium text-center text-white rounded-lg border cursor-pointer bg-primary-700 border-primary-600 sm:rounded-none sm:rounded-r-lg hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800" on:click={register}>Subscribe</button>
-										</div>
-									</div>
-									<div class="mx-auto max-w-screen-sm text-sm text-left text-gray-500 newsletter-form-footer dark:text-gray-300">We care about the protection of your data. <a href="/" class="font-medium text-primary-600 dark:text-primary-500 hover:underline">Read our Privacy Policy</a>.</div>
-							</form>
-						</div>
+		{#if scenarios.length > 0}
+			<!-- Scenario Navigation -->
+			<div class="mb-6 flex items-center justify-between bg-white dark:bg-gray-900 border border-gray-200 rounded-lg p-4 dark:border-gray-600 dark:bg-gray-700">
+				<Button color="light" size="sm" on:click={prevScenario} disabled={currentScenario === 1}>
+					<ChevronLeftOutline class="w-4 h-4 mr-2" />
+					Previous
+				</Button>
+				<div class="text-center">
+					<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{getCurrentScenarioConfig()?.title || 'Loading...'}</h1>
+					<p class="text-sm text-gray-500 dark:text-gray-400">Scenario {currentScenario} of {scenarios.length}</p>
 				</div>
-			</section>
-		{/if}
+				<Button color="light" size="sm" on:click={nextScenario} disabled={currentScenario === scenarios.length}>
+					Next
+					<ChevronRightOutline class="w-4 h-4 ml-2" />
+				</Button>
+			</div>
 
-		{#if submitted}
+			<!-- Scenario Description -->
+			<div class="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+				<p class="text-blue-800 dark:text-blue-200">{getCurrentScenarioConfig()?.description || 'Loading scenario description...'}</p>
+			</div>
+
+			<!-- Timeline and Editor View -->
 			<div class="grid grid-cols-3 gap-4">
-				<section class="bg-white p-6 mt-4 dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
+				<section class="bg-white p-6 dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
+					<!-- Form moved into timeline -->
+					{#if !active}
+						<div class="mb-6 pb-6 border-b border-gray-200 dark:border-gray-600">
+							<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Start Workflow</h3>
+							<div class="space-y-3">
+								<div class="relative">
+									<label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Email</label>
+									<input 
+										id="email"
+										class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" 
+										placeholder="Enter email address" 
+										type="email" 
+										bind:value={email} 
+										required
+									>
+								</div>
+								<Button color="blue" class="w-full" on:click={register} disabled={!email}>
+									Start Campaign
+								</Button>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Timeline -->
 					<Timeline order="vertical" class="w-full">
 						{#each events as event}
 							<TimelineItem title={event.subject} date={event.time}>
@@ -227,13 +258,20 @@
 							</TimelineItem>
 						{/each}
 					</Timeline>
-					{#if active}<Spinner />{/if}
+					{#if active}<Spinner class="mt-4" />{/if}
 				</section>
-				<section class="col-span-2 p-6 pt-0 mt-4 text-sm bg-white dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
+				
+				<section class="col-span-2 p-6 pt-0 text-sm bg-white dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
 					<Highlight language={typescript} code={workflowCode} let:highlighted>
 						<LineNumbers {highlighted} highlightedLines={highlightLines} wrapLines --highlighted-background="rgba(0, 0, 255, 0.2)" />
 					</Highlight>	
 				</section>
+			</div>
+		{:else}
+			<!-- Loading state -->
+			<div class="flex items-center justify-center py-12">
+				<Spinner class="mr-3" />
+				<span class="text-gray-500 dark:text-gray-400">Loading scenarios...</span>
 			</div>
 		{/if}
 	</div>

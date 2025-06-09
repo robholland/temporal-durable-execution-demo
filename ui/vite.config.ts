@@ -3,7 +3,8 @@ import { type ViteDevServer, defineConfig } from 'vite';
 import { Server } from 'socket.io';
 import { createConnection, getEnv } from './src/lib/server/temporal';
 import { Client } from '@temporalio/client';
-import type { DeployMsg, EmailMsg, NewsletterInput, RetryLevel, RetryLevelMsg, ToggleEmailServiceMsg, WorkflowCodeMsg } from './src/lib/types';
+import type { DeployMsg, EmailMsg, NewsletterInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg } from './src/lib/types';
+import { getAllScenarios, getScenario } from '../workflows/src/scenarios';
 import fs from 'fs';
 import proto from '@temporalio/proto';
 const { temporal } = proto;
@@ -22,7 +23,7 @@ const webSocketServer = {
 		if (!server.httpServer) return;
 
 		let emailServiceStatus: boolean = true;
-		let retryLevel: RetryLevel = 'temporal';
+		let currentScenario: number = 1;
 
 		const io = new Server(server.httpServer);
 		const clientEnv = getEnv();
@@ -32,6 +33,36 @@ const webSocketServer = {
 		});
 
 		let poller: NodeJS.Timeout | undefined = undefined;
+
+		const loadScenarioWorkflow = (scenarioNumber: number) => {
+			const scenario = getScenario(scenarioNumber);
+			if (!scenario) {
+				console.error(`Scenario ${scenarioNumber} not found`);
+				return;
+			}
+
+			try {
+				fs.copyFileSync(`../workflows/src/${scenario.workflowFile}`, '../workflows/src/workflows.ts');
+				console.log(`Loaded scenario ${scenarioNumber} workflow from ${scenario.workflowFile}`);
+			} catch (err) {
+				console.error(`Failed to load scenario ${scenarioNumber} workflow:`, err);
+			}
+		}
+
+		const getScenarioWorkflowCode = (scenarioNumber: number): string => {
+			const scenario = getScenario(scenarioNumber);
+			if (!scenario) {
+				console.error(`Scenario ${scenarioNumber} not found`);
+				return '';
+			}
+
+			try {
+				return fs.readFileSync(`../workflows/src/${scenario.workflowFile}`, 'utf-8');
+			} catch (err) {
+				console.error(`Failed to read scenario ${scenarioNumber} workflow:`, err);
+				return '';
+			}
+		}
 
 		const fetchEnhancedStackTrace = async (workflowId: string): Promise<workflow.EnhancedStackTrace> => {
 			return sdkClient.workflow.getHandle(workflowId).query('__enhanced_stack_trace');
@@ -53,9 +84,18 @@ const webSocketServer = {
 			}
 		}
 
+		// Load initial scenario
+		loadScenarioWorkflow(currentScenario);
+
 		io.on('connection', (socket) => {
 			socket.on('register', async ({ email }: { email: string }, cb) => {
 				const wfId = `newsletter-${email}`;
+				const scenario = getScenario(currentScenario);
+
+				if (!scenario) {
+					cb({ error: `Scenario ${currentScenario} not found` });
+					return;
+				}
 
 				sdkClient.workflow.start(
 					'Newsletter',
@@ -64,7 +104,7 @@ const webSocketServer = {
 						taskQueue: 'demo',
 						workflowTaskTimeout: '5 seconds',
 						args: [{ email } as NewsletterInput],
-						retry: retryLevel === 'workflow' ? WORKFLOW_RETRY : undefined
+						retry: scenario.retryPolicy
 					}
 				)
 				.then((handle) => {
@@ -118,29 +158,35 @@ const webSocketServer = {
 				console.log('Email service status', emailServiceStatus ? 'up' : 'down');
 			});
 
-			socket.on('getRetryLevel', async () => {
-				socket.emit('retryLevel', { level: retryLevel });
+			socket.on('getScenarios', async () => {
+				const scenarios = getAllScenarios();
+				socket.emit('scenarios', { scenarios } as ScenariosListMsg);
 			});
 
-			socket.on('toggleRetryLevel', async (msg: RetryLevelMsg) => {
-				retryLevel = msg.level;
-				if (retryLevel === 'none' || retryLevel === 'workflow') {
-					fs.copyFileSync('../workflows/src/workflows-without-retry.ts', '../workflows/src/workflows.ts');
-				} else {
-					fs.copyFileSync('../workflows/src/workflows-with-retry.ts', '../workflows/src/workflows.ts');
-				}
-				console.log('Retry level', retryLevel);
+			socket.on('getScenario', async () => {
+				socket.emit('scenario', { scenario: currentScenario });
+			});
+
+			socket.on('loadScenario', async (msg: ScenarioMsg) => {
+				currentScenario = msg.scenario;
+				loadScenarioWorkflow(currentScenario);
+				
+				// Send the workflow code immediately
+				const workflowCode = getScenarioWorkflowCode(currentScenario);
+				socket.emit('workflow:code', {
+					name: 'Newsletter',
+					code: workflowCode,
+					line: 0, // No highlighted line initially
+				} as WorkflowCodeMsg);
+				
+				console.log(`Switched to scenario ${currentScenario}`);
 			});
 
 			socket.on('deploy', async (msg: DeployMsg) => {
-				if (msg.email !== '' && retryLevel !== 'temporal') {
+				if (msg.email !== '') {
 					resetWorkflowExecution(`newsletter-${msg.email}`);
 				}
-				if (retryLevel === 'none' || retryLevel === 'workflow') {
-					fs.copyFileSync('../workflows/src/workflows-without-retry.ts', '../workflows/src/workflows.ts');
-				} else {
-					fs.copyFileSync('../workflows/src/workflows-with-retry.ts', '../workflows/src/workflows.ts');
-				}
+				loadScenarioWorkflow(currentScenario);
 				console.log('Deploy');
 			});
 
@@ -162,3 +208,4 @@ const webSocketServer = {
 export default defineConfig({
 	plugins: [sveltekit(), webSocketServer]
 });
+

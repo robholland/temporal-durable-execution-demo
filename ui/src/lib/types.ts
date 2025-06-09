@@ -13,10 +13,24 @@ export type ToggleEmailServiceMsg = {
   status: boolean;
 }
 
-export type RetryLevel = "none" | "workflow" | "temporal";
+export type ScenarioMsg = {
+  scenario: number;
+}
 
-export type RetryLevelMsg = {
-  level: RetryLevel;
+export type ScenarioConfig = {
+  scenarioNumber: number;
+  title: string;
+  description: string;
+  workflowFile: string;
+  retryPolicy?: {
+    maximumAttempts?: number;
+    backoffCoefficient?: number;
+    initialInterval?: string;
+  };
+}
+
+export type ScenariosListMsg = {
+  scenarios: ScenarioConfig[];
 }
 
 export type NewsletterInput = {
