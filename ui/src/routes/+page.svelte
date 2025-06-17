@@ -2,11 +2,9 @@
 	import { page } from '$app/stores';
 	import { io, Socket } from 'socket.io-client';
 	import { Navbar, NavBrand, NavLi, NavUl, NavHamburger, Spinner, Button } from 'flowbite-svelte';
-	import { Toggle } from 'flowbite-svelte';
 	import { Timeline, TimelineItem } from 'flowbite-svelte';
-  import { EnvelopeOpenSolid, ExclamationCircleSolid, EnvelopeSolid, UserCircleSolid, FlagSolid, ChevronLeftOutline, ChevronRightOutline, CreditCardSolid, TruckSolid } from 'flowbite-svelte-icons';
+  import { ExclamationCircleSolid, UserCircleSolid, FlagSolid, ChevronLeftOutline, ChevronRightOutline, CreditCardSolid, TruckSolid } from 'flowbite-svelte-icons';
 	import { onMount } from 'svelte';
-	import { slide } from 'svelte/transition';
 	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg, TransactionInput, TransactionStep, TransactionMsg } from '../lib/types';
 	import logo from '$lib/images/Temporal_Symbol_dark_1_2x.png';
 	import Highlight, { LineNumbers } from 'svelte-highlight';
@@ -16,6 +14,7 @@
 	$: activeUrl = $page.url.pathname;
 
 	let emailService: boolean = true;
+	let submitted = false;
 	let active = false;
 	let currentScenario = 1;
 	let scenarios: ScenarioConfig[] = [];
@@ -43,6 +42,7 @@
 
 	const reset = () => {
 		customerEmail = "bob@example.com";
+		submitted = false;
 		active = false;
 		events = [];
 	}
@@ -101,6 +101,7 @@
 
 	const register = async () => {
 		if (customerEmail !== "") {
+			submitted = true;
 			active = true;
 			const transactionInput: TransactionInput = {
 				customerEmail,
@@ -248,7 +249,7 @@
 			<div class="grid grid-cols-3 gap-4">
 				<section class="bg-white p-6 dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
 					<!-- Transaction Form -->
-					{#if !active}
+					{#if !submitted}
 						<div class="mb-6 pb-6 border-b border-gray-200 dark:border-gray-600">
 							<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Order</h3>
 							<div class="space-y-3">
@@ -302,7 +303,7 @@
 					<!-- Timeline -->
 					<Timeline order="vertical" class="w-full">
 						{#each events as event}
-							<TimelineItem title={event.subject} date={event.time}>
+							<TimelineItem title={event.subject}>
 								<svelte:fragment slot="icon">
 									{#if event.type === "step"}
 										{@html getStepIcon(event.subject, event.status)}
@@ -325,9 +326,6 @@
 								{#if event.details}
 									<p class="text-sm">{event.details}</p>
 								{/if}
-								{#if event.amount}
-									<p class="text-xs text-gray-500">£{event.amount}</p>
-								{/if}
 							</TimelineItem>
 						{/each}
 					</Timeline>
@@ -335,7 +333,9 @@
 				</section>
 				
 				<section class="col-span-2 p-6 pt-0 text-sm bg-white dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
-					<Highlight language={typescript} code={workflowCode} let:highlighted />
+					<Highlight language={typescript} code={workflowCode} let:highlighted>
+						<LineNumbers {highlighted} highlightedLines={highlightLines} wrapLines --highlighted-background="rgba(0, 0, 255, 0.2)" />
+					</Highlight>
 				</section>
 			</div>
 		{:else}

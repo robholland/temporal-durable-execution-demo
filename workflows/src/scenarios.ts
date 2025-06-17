@@ -3,8 +3,8 @@ import { ScenarioConfig } from './lib/types';
 export const scenarios: ScenarioConfig[] = [
   {
     scenarioNumber: 1,
-    title: "Scenario 1: The Fragile System",
-    description: "No retries at all. One network hiccup and your entire purchase disappears into the void. Shows how brittle systems fail completely on minor issues.",
+    title: "Scenario 1: The Happy Path",
+    description: "Everything works.",
     workflowFile: "scenario-1.ts",
     retryPolicy: undefined // No retries
   },

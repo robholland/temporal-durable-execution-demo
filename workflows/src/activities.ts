@@ -1,9 +1,9 @@
 import { io } from 'socket.io-client';
 import type { Email, EmailMsg, TransactionStep, TransactionMsg } from './lib/types';
 
-export async function sendEmail(email: Email): Promise<void> {
-  const socket = io("http://localhost:5173/");
+const socket = io("http://localhost:5173/");
 
+export async function sendEmail(email: Email): Promise<void> {
   return new Promise((resolve, reject) => {
     socket.emit('email', { email } as EmailMsg, (response: any) => {
       if (response.error) {
@@ -16,8 +16,6 @@ export async function sendEmail(email: Email): Promise<void> {
 }
 
 export async function chargeCard(customerEmail: string, amount: number): Promise<void> {
-  const socket = io("http://localhost:5173/");
-  
   const step: TransactionStep = {
     stepName: "Charge Card",
     time: new Date().toTimeString(),
@@ -38,8 +36,6 @@ export async function chargeCard(customerEmail: string, amount: number): Promise
 }
 
 export async function reserveStock(productName: string): Promise<void> {
-  const socket = io("http://localhost:5173/");
-  
   const step: TransactionStep = {
     stepName: "Reserve Stock",
     time: new Date().toTimeString(),
@@ -59,8 +55,6 @@ export async function reserveStock(productName: string): Promise<void> {
 }
 
 export async function shipItem(customerEmail: string, productName: string, shippingAddress: string): Promise<void> {
-  const socket = io("http://localhost:5173/");
-  
   const step: TransactionStep = {
     stepName: "Ship Item",
     time: new Date().toTimeString(),
@@ -80,8 +74,6 @@ export async function shipItem(customerEmail: string, productName: string, shipp
 }
 
 export async function sendReceipt(customerEmail: string, productName: string, amount: number): Promise<void> {
-  const socket = io("http://localhost:5173/");
-  
   const step: TransactionStep = {
     stepName: "Send Receipt",
     time: new Date().toTimeString(),

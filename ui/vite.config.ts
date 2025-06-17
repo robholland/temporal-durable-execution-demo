@@ -11,6 +11,8 @@ const { temporal } = proto;
 import Long from 'long';
 import workflow from '@temporalio/workflow';
 
+const DEMO_DELAY = 1000;
+
 const WORKFLOW_RETRY = {
 	maximumAttempts: Infinity,
 	backoffCoefficient: 1,
@@ -49,6 +51,26 @@ const webSocketServer = {
 			}
 		}
 
+		const processWorkflowCode = (fullCode: string): { processedCode: string; lineOffset: number } => {
+			// Find the main workflow function and elide everything before it
+			const workflowFunctionMatch = fullCode.match(/(export async function \w+Workflow[^{]*\{[\s\S]*)/);
+			
+			if (workflowFunctionMatch) {
+				const workflowFunction = workflowFunctionMatch[1];
+				const processedCode = `// ... imports and setup ...\n\n${workflowFunction}`;
+				
+				// Calculate line offset: count lines before the workflow function starts
+				const codeBeforeWorkflow = fullCode.substring(0, workflowFunctionMatch.index);
+				const linesBefore = codeBeforeWorkflow.split('\n').length - 1;
+				// Subtract 2 because we add 2 lines with the comment and empty line
+				const lineOffset = linesBefore - 2;
+				
+				return { processedCode, lineOffset };
+			}
+			
+			return { processedCode: fullCode, lineOffset: 0 }; // Fallback to full code if pattern not found
+		}
+
 		const getScenarioWorkflowCode = (scenarioNumber: number): string => {
 			const scenario = getScenario(scenarioNumber);
 			if (!scenario) {
@@ -58,16 +80,8 @@ const webSocketServer = {
 
 			try {
 				const fullCode = fs.readFileSync(`../workflows/src/${scenario.workflowFile}`, 'utf-8');
-				
-				// Find the main workflow function and elide everything before it
-				const workflowFunctionMatch = fullCode.match(/(export async function \w+Workflow[^{]*\{[\s\S]*)/);
-				
-				if (workflowFunctionMatch) {
-					const workflowFunction = workflowFunctionMatch[1];
-					return `// ... imports and setup ...\n\n${workflowFunction}`;
-				}
-				
-				return fullCode; // Fallback to full code if pattern not found
+				const { processedCode } = processWorkflowCode(fullCode);
+				return processedCode;
 			} catch (err) {
 				console.error(`Failed to read scenario ${scenarioNumber} workflow:`, err);
 				return '';
@@ -128,10 +142,14 @@ const webSocketServer = {
 							const location = trace.stacks[0].locations[0];
 							const workflowPath = location.file_path;
 							if (workflowPath) {
+								const fullCode = fs.readFileSync(workflowPath, 'utf-8');
+								const { processedCode, lineOffset } = processWorkflowCode(fullCode);
+								const adjustedLine = location.line ? Math.max(1, location.line - lineOffset) : 1;
+								
 								socket.emit('workflow:code', {
 									name: location.function_name,
-									code: fs.readFileSync(workflowPath, 'utf-8'),
-									line: location.line,
+									code: processedCode,
+									line: adjustedLine,
 								} as WorkflowCodeMsg);
 							}
 							console.dir(trace, { depth: null });
@@ -216,7 +234,7 @@ const webSocketServer = {
 				const { step } = msg;
 				
 				// Simulate some business logic failures vs network failures
-				const shouldFail = Math.random() < 0.3; // 30% chance of failure
+				const shouldFail = false;
 				const isBusinessLogicFailure = Math.random() < 0.5; // 50% of failures are business logic
 				
 				if (shouldFail) {
@@ -241,6 +259,8 @@ const webSocketServer = {
 					}
 				} else {
 					// Success
+					await new Promise(resolve => setTimeout(resolve, DEMO_DELAY));
+					
 					const completedStep = { ...step, status: 'completed' as const };
 					console.log('Transaction step completed', completedStep);
 					io.emit('transaction:step', { step: completedStep });
