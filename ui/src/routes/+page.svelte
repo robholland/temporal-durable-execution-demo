@@ -5,7 +5,7 @@
 	import { Timeline, TimelineItem } from 'flowbite-svelte';
   import { ExclamationCircleSolid, UserCircleSolid, FlagSolid, ChevronLeftOutline, ChevronRightOutline, CreditCardSolid, TruckSolid } from 'flowbite-svelte-icons';
 	import { onMount } from 'svelte';
-	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg, TransactionInput, TransactionStep, TransactionMsg, StepInteractionMsg } from '../lib/types';
+	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg, TransactionInput, TransactionStep, TransactionMsg, StepInteractionMsg, CardBalanceMsg } from '../lib/types';
 	import logo from '$lib/images/Temporal_Symbol_dark_1_2x.png';
 	import Highlight, { LineNumbers } from 'svelte-highlight';
 	import typescript from 'svelte-highlight/languages/typescript';
@@ -19,6 +19,10 @@
 	let currentScenario = 1;
 	let scenarios: ScenarioConfig[] = [];
 
+	// Reactive statements to ensure UI updates
+	$: currentScenarioConfig = scenarios.find(s => s.scenarioNumber === currentScenario);
+	$: scenarioTitle = currentScenarioConfig?.title || 'Loading...';
+
 	type TransactionEventStatus = "started" | "completed" | "failed" | "pending";
 
 	type TransactionEvent = {
@@ -29,6 +33,8 @@
 		details?: string;
 		amount?: number;
 		stepId?: string;
+		failureSource?: 'user' | 'automatic';
+		predeterminedError?: string;
 	}
 
 	let workflowCode = "";
@@ -40,6 +46,7 @@
 	let productName = "Coffee Beans";
 	let amount = 9.99;
 	let shippingAddress = "123 High Street, London, UK";
+	let cardBalance = 50.00;
 
 	const reset = () => {
 		customerEmail = "bob@example.com";
@@ -50,30 +57,29 @@
 
 	const nextScenario = () => {
 		if (currentScenario < scenarios.length) {
-			currentScenario++;
-			loadScenario();
+			loadScenario(currentScenario + 1);
 		}
 	}
 
 	const prevScenario = () => {
 		if (currentScenario > 1) {
-			currentScenario--;
-			loadScenario();
+			loadScenario(currentScenario - 1);
 		}
 	}
 
-	const loadScenario = () => {
+	const loadScenario = (scenarioNumber?: number) => {
+		const targetScenario = scenarioNumber || currentScenario;
 		reset();
 		
-		// Update server state
-		socket?.emit('loadScenario', { scenario: currentScenario } as ScenarioMsg);
+		// Update server state - let server confirm the scenario change
+		socket?.emit('loadScenario', { scenario: targetScenario } as ScenarioMsg);
 	}
 
 	const getCurrentScenarioConfig = (): ScenarioConfig | undefined => {
 		return scenarios.find(s => s.scenarioNumber === currentScenario);
 	}
 
-	const getStepIcon = (stepName: string, status: TransactionEventStatus) => {
+	const getStepIcon = (stepName: string, status: TransactionEventStatus, failureSource?: 'user' | 'automatic') => {
 		const iconClass = "w-4 h-4";
 		
 		if (status === "completed") {
@@ -92,7 +98,13 @@
 					return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900"><svg class="${iconClass} text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg></span>`;
 			}
 		} else if (status === "failed") {
-			return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900"><svg class="${iconClass} text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg></span>`;
+			if (failureSource === "user") {
+				// Show monkey emoji for user-triggered failures
+				return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900"><span class="text-base">🐵</span></span>`;
+			} else {
+				// Show standard error icon for automatic failures (like insufficient balance)
+				return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900"><svg class="${iconClass} text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg></span>`;
+			}
 		} else if (status === "pending") {
 			return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-yellow-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-yellow-900"><svg class="${iconClass} text-yellow-600 dark:text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg></span>`;
 		} else {
@@ -110,7 +122,8 @@
 				customerEmail,
 				productName,
 				amount,
-				shippingAddress
+				shippingAddress,
+				cardBalance
 			};
 			await socket.emitWithAck('register', transactionInput);
 		}
@@ -127,7 +140,7 @@
 		socket.emit('deploy', { email: customerEmail } as DeployMsg);
 	}
 
-	const handleStepInteraction = (stepId: string, action: 'success' | 'fail') => {
+	const handleStepInteraction = (stepId: string, action: 'success' | 'fail' | 'predetermined-fail') => {
 		console.log(`Step interaction: ${stepId} -> ${action}`);
 		socket.emit('stepInteraction', { stepId, action } as StepInteractionMsg);
 	}
@@ -141,6 +154,12 @@
 	const handleStepFail = (event: TransactionEvent) => {
 		if (event.stepId) {
 			handleStepInteraction(event.stepId, 'fail');
+		}
+	}
+
+	const handlePredeterminedFail = (event: TransactionEvent) => {
+		if (event.stepId) {
+			handleStepInteraction(event.stepId, 'predetermined-fail');
 		}
 	}
 
@@ -195,7 +214,9 @@
 				subject: msg.step.stepName,
 				details: msg.step.details,
 				amount: msg.step.amount,
-				stepId: msg.step.stepId
+				stepId: msg.step.stepId,
+				failureSource: msg.step.failureSource,
+				predeterminedError: msg.step.predeterminedError
 			};
 
 			// Check if we already have an event with the same stepId
@@ -222,6 +243,11 @@
 		socket.on('scenarios', (msg: ScenariosListMsg) => {
 			scenarios = msg.scenarios;
 			console.log('Loaded scenarios:', scenarios);
+		});
+
+		socket.on('cardBalance', (msg: CardBalanceMsg) => {
+			cardBalance = msg.balance;
+			console.log('Updated card balance to:', cardBalance);
 		});
 
 		socket.emit('getEmailServiceStatus');
@@ -265,7 +291,7 @@
 					Previous
 				</Button>
 				<div class="text-center">
-					<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{getCurrentScenarioConfig()?.title || 'Loading...'}</h1>
+					<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{scenarioTitle}</h1>
 					<p class="text-sm text-gray-500 dark:text-gray-400">Scenario {currentScenario} of {scenarios.length}</p>
 				</div>
 				<Button color="light" size="sm" on:click={nextScenario} disabled={currentScenario === scenarios.length}>
@@ -275,9 +301,11 @@
 			</div>
 
 			<!-- Scenario Description -->
-			<div class="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-				<p class="text-blue-800 dark:text-blue-200">{getCurrentScenarioConfig()?.description || 'Loading scenario description...'}</p>
-			</div>
+			{#if currentScenarioConfig?.description}
+				<div class="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+					<p class="text-blue-800 dark:text-blue-200">{currentScenarioConfig.description}</p>
+				</div>
+			{/if}
 
 			<!-- Timeline and Editor View -->
 			<div class="grid grid-cols-3 gap-4">
@@ -327,7 +355,31 @@
 										required
 									>
 								</div>
-								<Button color="blue" class="w-full" on:click={register} disabled={!customerEmail}>
+								
+								<!-- Demo Configuration Section -->
+								<div class="mt-4 pt-4 border-t border-gray-300 dark:border-gray-600">
+									<div class="mb-2">
+										<span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Demo Configuration</span>
+									</div>
+									<div class="relative">
+										<label for="cardBalance" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+											Card Balance (£)
+											{#if currentScenarioConfig?.cardBalance !== undefined}
+												<span class="text-xs text-blue-600 dark:text-blue-400 ml-1">(Set by scenario)</span>
+											{/if}
+										</label>
+										<input 
+											id="cardBalance"
+											class="block p-2.5 w-full text-sm text-gray-700 bg-gray-100 rounded-lg border border-gray-200 focus:ring-blue-300 focus:border-blue-300 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-gray-300 dark:focus:ring-blue-400 dark:focus:border-blue-400" 
+											type="number"
+											step="0.01"
+											bind:value={cardBalance} 
+											required
+										>
+									</div>
+								</div>
+								
+								<Button color="blue" class="w-full mt-4" on:click={register} disabled={!customerEmail}>
 									Buy
 								</Button>
 							</div>
@@ -340,7 +392,7 @@
 							<TimelineItem title={event.subject}>
 								<svelte:fragment slot="icon">
 									{#if event.type === "step"}
-										{@html getStepIcon(event.subject, event.status)}
+										{@html getStepIcon(event.subject, event.status, event.failureSource)}
 									{:else if event.type === "transaction"}
 										{#if event.status == "started"}
 											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900">
@@ -363,20 +415,36 @@
 								
 								{#if event.type === "step" && event.status === "pending" && event.stepId}
 									<div class="mt-3 flex gap-2">
-										<Button 
-											size="xs" 
-											color="green" 
-											on:click={() => handleStepSuccess(event)}
-										>
-											✓ Success
-										</Button>
-										<Button 
-											size="xs" 
-											color="red" 
-											on:click={() => handleStepFail(event)}
-										>
-											✗ Fail
-										</Button>
+																		{#if event.predeterminedError}
+									<Button 
+										size="sm" 
+										color="red" 
+										on:click={() => handlePredeterminedFail(event)}
+										class="font-medium"
+									>
+										😢 Sad
+									</Button>
+								{:else}
+									<Button 
+										size="sm" 
+										color="green" 
+										on:click={() => handleStepSuccess(event)}
+										class="font-medium"
+									>
+										😊 Happy
+									</Button>
+								{/if}
+										{#if currentScenarioConfig?.showChaosButton}
+											<Button 
+												size="xs" 
+												outline 
+												color="red" 
+												on:click={() => handleStepFail(event)}
+												class="font-normal"
+											>
+												🐵 Chaos
+											</Button>
+										{/if}
 									</div>
 								{/if}
 							</TimelineItem>

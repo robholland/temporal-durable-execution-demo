@@ -23,6 +23,8 @@ export type TransactionStep = {
   details?: string;
   amount?: number;
   stepId?: string;
+  failureSource?: 'user' | 'automatic';
+  predeterminedError?: string;
 }
 
 export type TransactionMsg = {
@@ -32,8 +34,10 @@ export type TransactionMsg = {
 export interface ScenarioConfig {
   scenarioNumber: number;
   title: string;
-  description: string;
+  description?: string;
   workflowFile: string;
+  cardBalance?: number;
+  showChaosButton?: boolean;
   retryPolicy?: {
     maximumAttempts?: number;
     backoffCoefficient?: number;

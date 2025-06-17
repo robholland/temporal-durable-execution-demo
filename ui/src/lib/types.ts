@@ -22,6 +22,8 @@ export type ScenarioConfig = {
   title: string;
   description: string;
   workflowFile: string;
+  cardBalance?: number;
+  showChaosButton?: boolean;
   retryPolicy?: {
     maximumAttempts?: number;
     backoffCoefficient?: number;
@@ -38,6 +40,7 @@ export type TransactionInput = {
   productName: string;
   amount: number;
   shippingAddress: string;
+  cardBalance: number;
 }
 
 export type TransactionStep = {
@@ -47,6 +50,8 @@ export type TransactionStep = {
   details?: string;
   amount?: number;
   stepId?: string;
+  failureSource?: 'user' | 'automatic';
+  predeterminedError?: string;
 }
 
 export type TransactionMsg = {
@@ -69,5 +74,9 @@ export type DeployMsg = {
 
 export type StepInteractionMsg = {
   stepId: string;
-  action: 'success' | 'fail';
+  action: 'success' | 'fail' | 'predetermined-fail';
+}
+
+export type CardBalanceMsg = {
+  balance: number;
 }

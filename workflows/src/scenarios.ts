@@ -3,23 +3,26 @@ import { ScenarioConfig } from './lib/types';
 export const scenarios: ScenarioConfig[] = [
   {
     scenarioNumber: 1,
-    title: "Scenario 1: The MVP",
-    description: "If only development was this simple.",
+    title: "The MVP",
     workflowFile: "scenario-1.ts",
+    showChaosButton: false, // Hide chaos button initially
     retryPolicy: undefined // No retries
   },
   {
     scenarioNumber: 2,
-    title: "Scenario 2: Actually Working As Intended",
-    description: "Temporal's intelligent handling. Miraculously behaves exactly as a human would expect - retries network issues, fails fast on business logic. Revolutionary concept: technology that works.",
+    title: "Insufficient balance",
     workflowFile: "scenario-2.ts",
-    retryPolicy: {
-      maximumAttempts: Infinity,
-      backoffCoefficient: 1,
-      initialInterval: "5 seconds"
-    }
+    cardBalance: 5.00, // Low balance to trigger charge failures
+    showChaosButton: false, // Introduce chaos button in scenario 2
+    retryPolicy: undefined // No retries
   }
 ];
+
+// retryPolicy: {
+//   maximumAttempts: Infinity,
+//   backoffCoefficient: 1,
+//   initialInterval: "5 seconds"
+// }
 
 export function getScenario(scenarioNumber: number): ScenarioConfig | undefined {
   return scenarios.find(s => s.scenarioNumber === scenarioNumber);

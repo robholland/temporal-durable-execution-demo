@@ -91,3 +91,22 @@ export async function sendReceipt(customerEmail: string, productName: string, am
     });
   });
 }
+
+export async function sendChargeFailureEmail(customerEmail: string, amount: number): Promise<void> {
+  const step: TransactionStep = {
+    stepName: "Send Charge Failure Email",
+    time: new Date().toTimeString(),
+    status: "started",
+    details: `Sending charge failure email for £${amount} to ${customerEmail}`
+  };
+
+  return new Promise((resolve, reject) => {
+    socket.emit('transaction', { step } as TransactionMsg, (response: any) => {
+      if (response.error) {
+        reject(response.error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}

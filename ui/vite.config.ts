@@ -3,7 +3,7 @@ import { type ViteDevServer, defineConfig } from 'vite';
 import { Server } from 'socket.io';
 import { createConnection, getEnv } from './src/lib/server/temporal';
 import { Client } from '@temporalio/client';
-import type { DeployMsg, EmailMsg, TransactionInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg, StepInteractionMsg } from './src/lib/types';
+import type { DeployMsg, EmailMsg, TransactionInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg, StepInteractionMsg, CardBalanceMsg } from './src/lib/types';
 import { getAllScenarios, getScenario } from '../workflows/src/scenarios';
 import fs from 'fs';
 import proto from '@temporalio/proto';
@@ -26,11 +26,13 @@ const webSocketServer = {
 
 		let emailServiceStatus: boolean = true;
 		let currentScenario: number = 1;
+		let currentCardBalance: number = 50.00; // Default card balance
 
 		// Store pending transaction steps with their callbacks and timeouts
 		const pendingSteps = new Map<string, {
 			callback: (result: any) => void;
 			timeout: NodeJS.Timeout;
+			step: any; // Store the original step data
 		}>();
 
 		const io = new Server(server.httpServer);
@@ -47,6 +49,15 @@ const webSocketServer = {
 			if (!scenario) {
 				console.error(`Scenario ${scenarioNumber} not found`);
 				return;
+			}
+
+			// Update card balance if specified in scenario, otherwise use default
+			if (scenario.cardBalance !== undefined) {
+				currentCardBalance = scenario.cardBalance;
+				console.log(`Set card balance to £${scenario.cardBalance.toFixed(2)} for scenario ${scenarioNumber}`);
+			} else {
+				currentCardBalance = 50.00; // Reset to default
+				console.log(`Reset card balance to default £${currentCardBalance.toFixed(2)} for scenario ${scenarioNumber}`);
 			}
 
 			try {
@@ -118,7 +129,12 @@ const webSocketServer = {
 		loadScenarioWorkflow(currentScenario);
 
 		io.on('connection', (socket) => {
-			socket.on('register', async ({ customerEmail, productName, amount, shippingAddress }: TransactionInput, cb) => {
+			// Send initial card balance when client connects
+			socket.emit('cardBalance', { balance: currentCardBalance } as CardBalanceMsg);
+			
+			socket.on('register', async ({ customerEmail, productName, amount, shippingAddress, cardBalance }: TransactionInput, cb) => {
+				// Store the card balance for this transaction
+				currentCardBalance = cardBalance;
 				const wfId = `purchase-${customerEmail}-${Date.now()}`;
 				const scenario = getScenario(currentScenario);
 
@@ -213,6 +229,12 @@ const webSocketServer = {
 					line: 0, // No highlighted line initially
 				} as WorkflowCodeMsg);
 				
+				// Send the current card balance to the client
+				socket.emit('cardBalance', { balance: currentCardBalance } as CardBalanceMsg);
+				
+				// Confirm the scenario change back to the client
+				socket.emit('scenario', { scenario: currentScenario } as ScenarioMsg);
+				
 				console.log(`Switched to scenario ${currentScenario}`);
 			});
 
@@ -242,12 +264,61 @@ const webSocketServer = {
 				// Generate unique step ID
 				const stepId = `${step.stepName}-${Date.now()}-${Math.random()}`;
 				
-				// Create pending step with interactive controls
+				// Special handling for "Charge Card" step - check balance automatically
+				if (step.stepName === "Charge Card") {
+					const chargeAmount = step.amount || 0;
+					
+					if (currentCardBalance < chargeAmount) {
+						// Insufficient balance - prepare the predetermined error
+						const predeterminedError = `Insufficient balance. Card balance: £${currentCardBalance.toFixed(2)}, Required: £${chargeAmount.toFixed(2)}`;
+						
+						const pendingStep = { 
+							...step, 
+							status: 'pending' as const, 
+							stepId,
+							predeterminedError,
+						};
+						
+						console.log('Transaction step pending (insufficient balance check)', pendingStep);
+						io.emit('transaction:step', { step: pendingStep });
+						
+						// Set up timeout for auto-failure with predetermined error
+						const timeout = setTimeout(() => {
+							if (pendingSteps.has(stepId)) {
+								const failedStep = { 
+									...step, 
+									status: 'failed' as const, 
+									stepId,
+									details: predeterminedError,
+									failureSource: 'automatic' as const
+								};
+								
+								console.log('Transaction step auto-failed (predetermined error timeout)', failedStep);
+								io.emit('transaction:step', { step: failedStep });
+								
+								const pendingData = pendingSteps.get(stepId);
+								if (pendingData) {
+									pendingData.callback({ error: predeterminedError });
+									pendingSteps.delete(stepId);
+								}
+							}
+						}, 5000); // Use the same 5-second timeout as other steps
+						
+						// Store the pending step with predetermined error
+						pendingSteps.set(stepId, {
+							callback: cb,
+							timeout,
+							step: { ...step, predeterminedError }
+						});
+						return;
+					}
+				}
+				
+				// For all steps (including Charge Card with sufficient balance), create pending step with interactive controls
 				const pendingStep = { 
 					...step, 
 					status: 'pending' as const, 
 					stepId,
-					details: `${step.details} - Waiting for user input...` 
 				};
 				
 				console.log('Transaction step pending user interaction', pendingStep);
@@ -256,6 +327,11 @@ const webSocketServer = {
 				// Set up timeout for auto-success after 5 seconds
 				const timeout = setTimeout(() => {
 					if (pendingSteps.has(stepId)) {
+						// For Charge Card step, deduct balance on successful completion
+						if (step.stepName === "Charge Card" && step.amount) {
+							currentCardBalance -= step.amount;
+						}
+						
 						// Auto-success after timeout
 						const completedStep = { ...step, status: 'completed' as const, stepId };
 						console.log('Transaction step auto-completed (timeout)', completedStep);
@@ -272,7 +348,8 @@ const webSocketServer = {
 				// Store the pending step
 				pendingSteps.set(stepId, {
 					callback: cb,
-					timeout
+					timeout,
+					step
 				});
 			});
 
@@ -286,15 +363,57 @@ const webSocketServer = {
 					// Clear the timeout
 					clearTimeout(pendingData.timeout);
 					
+					// Check if this step has a predetermined error
+					const hasPredeterminedError = pendingData.step.predeterminedError;
+					
 					// Resolve the step based on user action
 					if (action === 'success') {
-						const completedStep = { stepName: stepId.split('-')[0], status: 'completed' as const, stepId, time: new Date().toTimeString() };
+						// Prevent success for steps with predetermined errors
+						if (hasPredeterminedError) {
+							console.log('Ignoring success action for step with predetermined error');
+							return;
+						}
+						
+						const stepName = stepId.split('-')[0];
+						
+						// For Charge Card step, deduct balance on successful completion
+						if (stepName === "Charge Card" && pendingData.step.amount) {
+							currentCardBalance -= pendingData.step.amount;
+							console.log(`Charge Card step completed by user - deducted £${pendingData.step.amount.toFixed(2)}, remaining balance: £${currentCardBalance.toFixed(2)}`);
+						}
+						
+						const completedStep = { stepName, status: 'completed' as const, stepId, time: new Date().toTimeString() };
 						console.log('Transaction step completed (user action)', completedStep);
 						io.emit('transaction:step', { step: completedStep });
 						pendingData.callback({});
+					} else if (action === 'predetermined-fail') {
+						// Handle predetermined failure - should be treated as automatic failure
+						const stepName = stepId.split('-')[0];
+						const errorMessage = hasPredeterminedError || 'Predetermined failure';
+						
+						const failedStep = { 
+							stepName, 
+							status: 'failed' as const, 
+							stepId, 
+							time: new Date().toTimeString(), 
+							details: errorMessage,
+							failureSource: 'automatic' as const 
+						};
+						console.log('Transaction step failed (predetermined error triggered early)', failedStep);
+						io.emit('transaction:step', { step: failedStep });
+						pendingData.callback({ error: errorMessage });
 					} else {
-						const failedStep = { stepName: stepId.split('-')[0], status: 'failed' as const, stepId, time: new Date().toTimeString(), details: 'Failed by user action' };
-						console.log('Transaction step failed (user action)', failedStep);
+						// Manual failure (chaos monkey)
+						const stepName = stepId.split('-')[0];
+						const failedStep = { 
+							stepName, 
+							status: 'failed' as const, 
+							stepId, 
+							time: new Date().toTimeString(), 
+							details: 'Manual failure', 
+							failureSource: 'user' as const 
+						};
+						console.log('Transaction step failed (user chaos action)', failedStep);
 						io.emit('transaction:step', { step: failedStep });
 						pendingData.callback({ error: 'User triggered failure' });
 					}
