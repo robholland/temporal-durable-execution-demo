@@ -5,16 +5,26 @@ export const scenarios: ScenarioConfig[] = [
     scenarioNumber: 1,
     title: "The MVP",
     workflowFile: "scenario-1.ts",
-    showChaosButton: false, // Hide chaos button initially
-    retryPolicy: undefined // No retries
+    showChaosButton: false
   },
   {
     scenarioNumber: 2,
     title: "Insufficient balance",
     workflowFile: "scenario-2.ts",
     cardBalance: 5.00, // Low balance to trigger charge failures
-    showChaosButton: false, // Introduce chaos button in scenario 2
-    retryPolicy: undefined // No retries
+    showChaosButton: false
+  },
+  {
+    scenarioNumber: 3,
+    title: "Signs of Chaos",
+    workflowFile: "scenario-3.ts",
+    showChaosButton: true
+  },
+  {
+    scenarioNumber: 4,
+    title: "Durable Execution: Ignoring the Monkey",
+    workflowFile: "scenario-4.ts",
+    showChaosButton: true
   }
 ];
 

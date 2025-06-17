@@ -38,9 +38,4 @@ export interface ScenarioConfig {
   workflowFile: string;
   cardBalance?: number;
   showChaosButton?: boolean;
-  retryPolicy?: {
-    maximumAttempts?: number;
-    backoffCoefficient?: number;
-    initialInterval?: string;
-  };
 }

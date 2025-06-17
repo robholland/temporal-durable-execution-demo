@@ -11,13 +11,7 @@ const { temporal } = proto;
 import Long from 'long';
 import workflow from '@temporalio/workflow';
 
-const DEMO_DELAY = 1000;
-
-const WORKFLOW_RETRY = {
-	maximumAttempts: Infinity,
-	backoffCoefficient: 1,
-	initialInterval: '5 seconds',
-}
+const STEP_TIMEOUT = 3000;
 
 const webSocketServer = {
 	name: 'websocket',
@@ -149,8 +143,7 @@ const webSocketServer = {
 						workflowId: wfId,
 						taskQueue: 'demo',
 						workflowTaskTimeout: '5 seconds',
-						args: [{ customerEmail, productName, amount, shippingAddress } as TransactionInput],
-						retry: scenario.retryPolicy
+						args: [{ customerEmail, productName, amount, shippingAddress } as TransactionInput]
 					}
 				)
 				.then((handle) => {
@@ -302,7 +295,7 @@ const webSocketServer = {
 									pendingSteps.delete(stepId);
 								}
 							}
-						}, 5000); // Use the same 5-second timeout as other steps
+						}, STEP_TIMEOUT);
 						
 						// Store the pending step with predetermined error
 						pendingSteps.set(stepId, {
@@ -324,7 +317,7 @@ const webSocketServer = {
 				console.log('Transaction step pending user interaction', pendingStep);
 				io.emit('transaction:step', { step: pendingStep });
 				
-				// Set up timeout for auto-success after 5 seconds
+				// Set up timeout for auto-success after STEP_TIMEOUT milliseconds
 				const timeout = setTimeout(() => {
 					if (pendingSteps.has(stepId)) {
 						// For Charge Card step, deduct balance on successful completion
@@ -343,7 +336,7 @@ const webSocketServer = {
 							pendingSteps.delete(stepId);
 						}
 					}
-				}, 5000); // 5 second timeout
+				}, STEP_TIMEOUT);
 				
 				// Store the pending step
 				pendingSteps.set(stepId, {
@@ -410,7 +403,7 @@ const webSocketServer = {
 							status: 'failed' as const, 
 							stepId, 
 							time: new Date().toTimeString(), 
-							details: 'Manual failure', 
+							details: 'Chaos!', 
 							failureSource: 'user' as const 
 						};
 						console.log('Transaction step failed (user chaos action)', failedStep);
