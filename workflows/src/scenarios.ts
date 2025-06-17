@@ -3,8 +3,8 @@ import { ScenarioConfig } from './lib/types';
 export const scenarios: ScenarioConfig[] = [
   {
     scenarioNumber: 1,
-    title: "Scenario 1: The Happy Path",
-    description: "Everything works.",
+    title: "Scenario 1: The MVP",
+    description: "If only development was this simple.",
     workflowFile: "scenario-1.ts",
     retryPolicy: undefined // No retries
   },

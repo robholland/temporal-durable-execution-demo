@@ -43,9 +43,10 @@ export type TransactionInput = {
 export type TransactionStep = {
   stepName: string;
   time: string;
-  status: 'started' | 'completed' | 'failed';
+  status: 'started' | 'completed' | 'failed' | 'pending';
   details?: string;
   amount?: number;
+  stepId?: string;
 }
 
 export type TransactionMsg = {
@@ -64,4 +65,9 @@ export type WorkflowCodeMsg = {
 
 export type DeployMsg = {
   email: string;
+}
+
+export type StepInteractionMsg = {
+  stepId: string;
+  action: 'success' | 'fail';
 }

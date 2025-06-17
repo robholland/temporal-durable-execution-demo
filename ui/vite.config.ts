@@ -3,7 +3,7 @@ import { type ViteDevServer, defineConfig } from 'vite';
 import { Server } from 'socket.io';
 import { createConnection, getEnv } from './src/lib/server/temporal';
 import { Client } from '@temporalio/client';
-import type { DeployMsg, EmailMsg, TransactionInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg } from './src/lib/types';
+import type { DeployMsg, EmailMsg, TransactionInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg, StepInteractionMsg } from './src/lib/types';
 import { getAllScenarios, getScenario } from '../workflows/src/scenarios';
 import fs from 'fs';
 import proto from '@temporalio/proto';
@@ -26,6 +26,12 @@ const webSocketServer = {
 
 		let emailServiceStatus: boolean = true;
 		let currentScenario: number = 1;
+
+		// Store pending transaction steps with their callbacks and timeouts
+		const pendingSteps = new Map<string, {
+			callback: (result: any) => void;
+			timeout: NodeJS.Timeout;
+		}>();
 
 		const io = new Server(server.httpServer);
 		const clientEnv = getEnv();
@@ -233,38 +239,68 @@ const webSocketServer = {
 			socket.on('transaction', async (msg: TransactionMsg, cb) => {
 				const { step } = msg;
 				
-				// Simulate some business logic failures vs network failures
-				const shouldFail = false;
-				const isBusinessLogicFailure = Math.random() < 0.5; // 50% of failures are business logic
+				// Generate unique step ID
+				const stepId = `${step.stepName}-${Date.now()}-${Math.random()}`;
 				
-				if (shouldFail) {
-					if (isBusinessLogicFailure && step.stepName === 'Charge Card') {
-						// Business logic failure - insufficient funds or declined card
-						const failedStep = { ...step, status: 'failed' as const, details: 'Card declined - insufficient credit limit' };
-						console.log('Transaction step failed (business logic)', failedStep);
-						io.emit('transaction:step', { step: failedStep });
-						cb({ error: 'Card declined' });
-					} else if (isBusinessLogicFailure && step.stepName === 'Reserve Stock') {
-						// Business logic failure - out of stock
-						const failedStep = { ...step, status: 'failed' as const, details: 'Out of stock - item no longer available' };
-						console.log('Transaction step failed (business logic)', failedStep);
-						io.emit('transaction:step', { step: failedStep });
-						cb({ error: 'Out of stock' });
-					} else {
-						// Network/service failure - should be retried
-						const failedStep = { ...step, status: 'failed' as const, details: `${step.stepName} service temporarily unavailable` };
-						console.log('Transaction step failed (network)', failedStep);
-						io.emit('transaction:step', { step: failedStep });
-						cb({ error: 'Service temporarily unavailable' });
+				// Create pending step with interactive controls
+				const pendingStep = { 
+					...step, 
+					status: 'pending' as const, 
+					stepId,
+					details: `${step.details} - Waiting for user input...` 
+				};
+				
+				console.log('Transaction step pending user interaction', pendingStep);
+				io.emit('transaction:step', { step: pendingStep });
+				
+				// Set up timeout for auto-success after 5 seconds
+				const timeout = setTimeout(() => {
+					if (pendingSteps.has(stepId)) {
+						// Auto-success after timeout
+						const completedStep = { ...step, status: 'completed' as const, stepId };
+						console.log('Transaction step auto-completed (timeout)', completedStep);
+						io.emit('transaction:step', { step: completedStep });
+						
+						const pendingData = pendingSteps.get(stepId);
+						if (pendingData) {
+							pendingData.callback({});
+							pendingSteps.delete(stepId);
+						}
 					}
-				} else {
-					// Success
-					await new Promise(resolve => setTimeout(resolve, DEMO_DELAY));
+				}, 5000); // 5 second timeout
+				
+				// Store the pending step
+				pendingSteps.set(stepId, {
+					callback: cb,
+					timeout
+				});
+			});
+
+			// Handle manual step interaction
+			socket.on('stepInteraction', async (msg: StepInteractionMsg) => {
+				const { stepId, action } = msg;
+				
+				if (pendingSteps.has(stepId)) {
+					const pendingData = pendingSteps.get(stepId)!;
 					
-					const completedStep = { ...step, status: 'completed' as const };
-					console.log('Transaction step completed', completedStep);
-					io.emit('transaction:step', { step: completedStep });
-					cb({});
+					// Clear the timeout
+					clearTimeout(pendingData.timeout);
+					
+					// Resolve the step based on user action
+					if (action === 'success') {
+						const completedStep = { stepName: stepId.split('-')[0], status: 'completed' as const, stepId, time: new Date().toTimeString() };
+						console.log('Transaction step completed (user action)', completedStep);
+						io.emit('transaction:step', { step: completedStep });
+						pendingData.callback({});
+					} else {
+						const failedStep = { stepName: stepId.split('-')[0], status: 'failed' as const, stepId, time: new Date().toTimeString(), details: 'Failed by user action' };
+						console.log('Transaction step failed (user action)', failedStep);
+						io.emit('transaction:step', { step: failedStep });
+						pendingData.callback({ error: 'User triggered failure' });
+					}
+					
+					// Clean up
+					pendingSteps.delete(stepId);
 				}
 			});
 		});

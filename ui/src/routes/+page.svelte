@@ -5,7 +5,7 @@
 	import { Timeline, TimelineItem } from 'flowbite-svelte';
   import { ExclamationCircleSolid, UserCircleSolid, FlagSolid, ChevronLeftOutline, ChevronRightOutline, CreditCardSolid, TruckSolid } from 'flowbite-svelte-icons';
 	import { onMount } from 'svelte';
-	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg, TransactionInput, TransactionStep, TransactionMsg } from '../lib/types';
+	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg, TransactionInput, TransactionStep, TransactionMsg, StepInteractionMsg } from '../lib/types';
 	import logo from '$lib/images/Temporal_Symbol_dark_1_2x.png';
 	import Highlight, { LineNumbers } from 'svelte-highlight';
 	import typescript from 'svelte-highlight/languages/typescript';
@@ -19,7 +19,7 @@
 	let currentScenario = 1;
 	let scenarios: ScenarioConfig[] = [];
 
-	type TransactionEventStatus = "started" | "completed" | "failed";
+	type TransactionEventStatus = "started" | "completed" | "failed" | "pending";
 
 	type TransactionEvent = {
 		time: string;
@@ -28,6 +28,7 @@
 		subject: string;
 		details?: string;
 		amount?: number;
+		stepId?: string;
 	}
 
 	let workflowCode = "";
@@ -92,6 +93,8 @@
 			}
 		} else if (status === "failed") {
 			return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900"><svg class="${iconClass} text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg></span>`;
+		} else if (status === "pending") {
+			return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-yellow-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-yellow-900"><svg class="${iconClass} text-yellow-600 dark:text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg></span>`;
 		} else {
 			return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-blue-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-blue-900"><svg class="${iconClass} text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg></span>`;
 		}
@@ -122,6 +125,23 @@
 	const deploy = async () => {
 		console.log('Deploying');
 		socket.emit('deploy', { email: customerEmail } as DeployMsg);
+	}
+
+	const handleStepInteraction = (stepId: string, action: 'success' | 'fail') => {
+		console.log(`Step interaction: ${stepId} -> ${action}`);
+		socket.emit('stepInteraction', { stepId, action } as StepInteractionMsg);
+	}
+
+	const handleStepSuccess = (event: TransactionEvent) => {
+		if (event.stepId) {
+			handleStepInteraction(event.stepId, 'success');
+		}
+	}
+
+	const handleStepFail = (event: TransactionEvent) => {
+		if (event.stepId) {
+			handleStepInteraction(event.stepId, 'fail');
+		}
 	}
 
 	onMount(() => {
@@ -167,14 +187,28 @@
 
 		socket.on('transaction:step', (msg: TransactionMsg) => {
 			console.log('Transaction step', msg.step);
-			events = [...events, { 
+			
+			const newEvent = { 
 				time: msg.step.time, 
 				type: 'step', 
 				status: msg.step.status, 
 				subject: msg.step.stepName,
 				details: msg.step.details,
-				amount: msg.step.amount
-			}];
+				amount: msg.step.amount,
+				stepId: msg.step.stepId
+			};
+
+			// Check if we already have an event with the same stepId
+			const existingIndex = events.findIndex(e => e.stepId === msg.step.stepId);
+			
+			if (existingIndex >= 0) {
+				// Update existing event
+				events[existingIndex] = newEvent;
+				events = [...events]; // Trigger reactivity
+			} else {
+				// Add new event
+				events = [...events, newEvent];
+			}
 		});
 
 		socket.on('emailServiceStatus', (status: boolean) => {
@@ -325,6 +359,25 @@
 								</svelte:fragment>
 								{#if event.details}
 									<p class="text-sm">{event.details}</p>
+								{/if}
+								
+								{#if event.type === "step" && event.status === "pending" && event.stepId}
+									<div class="mt-3 flex gap-2">
+										<Button 
+											size="xs" 
+											color="green" 
+											on:click={() => handleStepSuccess(event)}
+										>
+											✓ Success
+										</Button>
+										<Button 
+											size="xs" 
+											color="red" 
+											on:click={() => handleStepFail(event)}
+										>
+											✗ Fail
+										</Button>
+									</div>
 								{/if}
 							</TimelineItem>
 						{/each}
