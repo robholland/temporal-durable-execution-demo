@@ -1,20 +1,8 @@
 import { io } from 'socket.io-client';
-import type { Email, EmailMsg, TransactionStep, TransactionMsg } from './lib/types';
-import { ApplicationFailure, CancelledFailure, heartbeat } from '@temporalio/activity'
+import type { TransactionStep, TransactionMsg } from './lib/types';
+import { ApplicationFailure } from '@temporalio/activity'
 
 const socket = io("http://localhost:5173/");
-
-export async function sendEmail(email: Email): Promise<void> {
-  return new Promise((resolve, reject) => {
-    socket.emit('email', { email } as EmailMsg, (response: any) => {
-      if (response.error) {
-        reject(response.error);
-      } else {
-        resolve();
-      }
-    });
-  });
-}
 
 export async function chargeCard(customerEmail: string, amount: number): Promise<void> {
   const step: TransactionStep = {

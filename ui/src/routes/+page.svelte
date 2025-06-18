@@ -14,7 +14,6 @@
 
 	$: activeUrl = $page.url.pathname;
 
-	let emailService: boolean = true;
 	let submitted = false;
 	let active = false;
 	let currentScenario = 1;
@@ -128,17 +127,6 @@
 			};
 			await socket.emitWithAck('register', transactionInput);
 		}
-	}
-
-	const toggleEmailService = async (event: Event) => {
-		const target = event.target as HTMLInputElement;
-		console.log('Toggling email service', target.checked);
-		socket.emit('toggleEmailService', { status: target.checked } as ToggleEmailServiceMsg);
-	}
-
-	const deploy = async () => {
-		console.log('Deploying');
-		socket.emit('deploy', { email: customerEmail } as DeployMsg);
 	}
 
 	const handleStepInteraction = (stepId: string, action: 'success' | 'fail' | 'predetermined-fail' | 'crash') => {
@@ -272,10 +260,6 @@
 				// Add new event
 				events = [...events, newEvent];
 			}
-		});
-
-		socket.on('emailServiceStatus', (status: boolean) => {
-			emailService = status;
 		});
 
 		socket.on('scenario', (msg: ScenarioMsg) => {

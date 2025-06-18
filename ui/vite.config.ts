@@ -18,7 +18,6 @@ const webSocketServer = {
 	configureServer(server: ViteDevServer) {
 		if (!server.httpServer) return;
 
-		let emailServiceStatus: boolean = true;
 		let currentScenario: number = 1;
 		let currentCardBalance: number = 50.00; // Default card balance
 		let currentWorkflowId: string | null = null; // Track current workflow ID
@@ -219,15 +218,6 @@ const webSocketServer = {
 				.catch((err) => { cb({ error: err }); });
 			});
 
-			socket.on('getEmailServiceStatus', async () => {
-				socket.emit('emailServiceStatus', emailServiceStatus);
-			});
-
-			socket.on('toggleEmailService', async (msg: ToggleEmailServiceMsg) => {
-				emailServiceStatus = msg.status;
-				console.log('Email service status', emailServiceStatus ? 'up' : 'down');
-			});
-
 			socket.on('getScenarios', async () => {
 				const scenarios = getAllScenarios();
 				socket.emit('scenarios', { scenarios } as ScenariosListMsg);
@@ -256,26 +246,6 @@ const webSocketServer = {
 				socket.emit('scenario', { scenario: currentScenario } as ScenarioMsg);
 				
 				console.log(`Switched to scenario ${currentScenario}`);
-			});
-
-			socket.on('deploy', async (msg: DeployMsg) => {
-				if (msg.email !== '') {
-					resetWorkflowExecution(`purchase-${msg.email}-*`);
-				}
-				loadScenarioWorkflow(currentScenario);
-				console.log('Deploy');
-			});
-
-			socket.on('email', async (msg: EmailMsg, cb) => {
-				if (emailServiceStatus) {
-					console.log('Email completed', msg);
-					io.emit('email:completed', msg);
-					cb({});
-				} else {
-					console.log('Email failed', msg);
-					io.emit('email:failed', msg);
-					cb({ error: 'Email service is down' });
-				}
 			});
 
 			socket.on('transaction', async (msg: TransactionMsg, cb) => {
