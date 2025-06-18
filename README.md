@@ -22,6 +22,6 @@ From `./ui`: `npm run dev`
 
 Open http://localhost:5173
 
-From `./worker`: `npm run worker`
+From `./worker`: `npm run worker.watch`
 
 Enjoy :)
