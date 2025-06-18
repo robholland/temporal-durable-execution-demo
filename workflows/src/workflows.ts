@@ -18,7 +18,8 @@ const { pendingSleep, completeSleep } = proxyLocalActivities<typeof activities>(
   }
 });
 
-
+// We wrap sleep here so that it behaves like an activity UI wise.
+// As this is purely for a demo, we keep it named sleep in the workflow code.
 async function sleep(duration: any): Promise<void> {
   // Emit the wait step (this will show as pending with interaction buttons)
   await pendingSleep();
