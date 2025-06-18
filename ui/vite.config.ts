@@ -3,7 +3,7 @@ import { type ViteDevServer, defineConfig } from 'vite';
 import { Server } from 'socket.io';
 import { createConnection, getEnv } from './src/lib/server/temporal';
 import { Client } from '@temporalio/client';
-import type { DeployMsg, EmailMsg, TransactionInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg, StepInteractionMsg, CardBalanceMsg } from './src/lib/types';
+import type { DeployMsg, EmailMsg, TransactionInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg, StepInteractionMsg, CardBalanceMsg, WorkerEventMsg } from './src/lib/types';
 import { getAllScenarios, getScenario } from '../workflows/src/scenarios';
 import fs from 'fs';
 import proto from '@temporalio/proto';
@@ -334,6 +334,26 @@ const webSocketServer = {
 					}
 				}
 				
+				// Special handling for "Sleep" step - no auto-completion, workflow controls timing
+				if (step.stepName === "Sleep") {
+					const pendingStep = { 
+						...step, 
+						stepId,
+					};
+					
+					console.log('Sleep step (no auto-completion)', pendingStep);
+					io.emit('transaction:step', { step: pendingStep });
+					
+					// No timeout for Sleep steps - they complete when the workflow sleep finishes
+					// Store the pending step without timeout
+					pendingSteps.set(stepId, {
+						callback: () => {},
+						timeout: null as any, // No timeout for sleep steps
+						step
+					});
+					return;
+				}
+				
 				// For all steps (including Charge Card with sufficient balance), create pending step with interactive controls
 				const pendingStep = { 
 					...step, 
@@ -506,6 +526,11 @@ const webSocketServer = {
 				}
 			});
 
+			// Handle worker lifecycle events
+			socket.on('worker:event', async (msg: WorkerEventMsg) => {
+				console.log('Worker event received:', msg);
+				io.emit('worker:event', msg);
+			});
 
 		});
 	}

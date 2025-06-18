@@ -117,3 +117,50 @@ export async function sendChargeFailureEmail(customerEmail: string, amount: numb
     });
   });
 }
+
+export async function pendingSleep(): Promise<void> {
+  const step: TransactionStep = {
+    stepName: "Sleep",
+    time: new Date().toTimeString(),
+    status: "pending",
+    details: "Waiting 30 days for review period (demo: 5 seconds)"
+  };
+
+  return new Promise((resolve, reject) => {
+    socket.emit('transaction', { step } as TransactionMsg);
+    resolve();
+  });
+}
+
+export async function completeSleep(): Promise<void> {
+  const step: TransactionStep = {
+    stepName: "Sleep",
+    time: new Date().toTimeString(),
+    status: "completed",
+    details: "Review period wait completed"
+  };
+
+  return new Promise((resolve, reject) => {
+    socket.emit('transaction', { step } as TransactionMsg);
+    resolve();
+  });
+}
+
+export async function sendReviewRequest(customerEmail: string, productName: string, amount: number): Promise<void> {
+  const step: TransactionStep = {
+    stepName: "Send Review Request",
+    time: new Date().toTimeString(),
+    status: "started",
+    details: `Sending review request for ${productName} (£${amount}) to ${customerEmail}`
+  };
+
+  return new Promise((resolve, reject) => {
+    socket.emit('transaction', { step } as TransactionMsg, (response: any) => {
+      if (response.error) {
+        reject(response.error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}

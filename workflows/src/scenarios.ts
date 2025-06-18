@@ -49,13 +49,27 @@ export const scenarios: ScenarioConfig[] = [
   },
   {
     scenarioNumber: 8,
-    title: "Never forget",
+    title: "What were we doing?",
     workflowFile: "scenario-8.ts",
     showChaosButton: true,
     showCrashButton: true,
     crashButtonBehaviour: 'reset',
+  },
+  {
+    scenarioNumber: 9,
+    title: "Durable Execution: Just carry on",
+    workflowFile: "scenario-9.ts",
+    showChaosButton: true,
+    showCrashButton: true,
+    crashButtonBehaviour: 'replay',
+  },
+  {
+    scenarioNumber: 10,
+    title: "Durable Execution: Learning what is possible",
+    workflowFile: "scenario-10.ts",
+    showCrashButton: true,
+    crashButtonBehaviour: 'replay',
   }
-
 ];
 
 // retryPolicy: {

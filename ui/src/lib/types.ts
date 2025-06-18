@@ -82,3 +82,9 @@ export type CrashMsg = {
   stepId: string;
   behaviour: 'lost' | 'reset' | 'replay';
 }
+
+export type WorkerEventMsg = {
+  status: 'started' | 'stopped' | 'crashed';
+  details?: string;
+  error?: string;
+}

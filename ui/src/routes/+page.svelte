@@ -6,7 +6,7 @@
 	import { Timeline, TimelineItem } from 'flowbite-svelte';
   import { ExclamationCircleSolid, UserCircleSolid, FlagSolid, ChevronLeftOutline, ChevronRightOutline, CreditCardSolid, TruckSolid } from 'flowbite-svelte-icons';
 	import { onMount, onDestroy } from 'svelte';
-	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg, TransactionInput, TransactionStep, TransactionMsg, StepInteractionMsg, CardBalanceMsg } from '../lib/types';
+	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg, TransactionInput, TransactionStep, TransactionMsg, StepInteractionMsg, CardBalanceMsg, WorkerEventMsg } from '../lib/types';
 	import logo from '$lib/images/Temporal_Symbol_dark_1_2x.png';
 	import Highlight, { LineNumbers } from 'svelte-highlight';
 	import typescript from 'svelte-highlight/languages/typescript';
@@ -292,6 +292,28 @@
 			console.log('Updated card balance to:', cardBalance);
 		});
 
+		socket.on('worker:event', (msg: WorkerEventMsg) => {
+			console.log('Worker event received:', msg);
+			
+			// Only show worker events after form submission
+			if (!submitted) {
+				return;
+			}
+			
+			const eventSubject = msg.status === 'started' ? 'Worker Started' : 
+											 msg.status === 'stopped' ? 'Worker Stopped' : 
+											 'Worker Crashed';
+			const eventStatus = msg.status === 'crashed' ? 'failed' : 'completed';
+			
+			events = [...events, { 
+				time: new Date().toTimeString(), 
+				type: 'worker', 
+				status: eventStatus as TransactionEventStatus, 
+				subject: eventSubject,
+				details: msg.details || msg.error
+			}];
+		});
+
 		socket.emit('getEmailServiceStatus');
 		socket.emit('getScenario');
 		socket.emit('getScenarios');
@@ -443,6 +465,28 @@
 								<svelte:fragment slot="icon">
 									{#if event.type === "step"}
 										{@html getStepIcon(event.subject, event.status, event.failureSource)}
+									{:else if event.type === "worker"}
+										{#if event.status === "completed"}
+											{#if event.subject === "Worker Started"}
+												<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-blue-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-blue-900">
+													<svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+														<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path>
+													</svg>
+												</span>
+											{:else}
+												<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-gray-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-gray-700">
+													<svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+														<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zM11 8a1 1 0 112 0v4a1 1 0 11-2 0V8z" clip-rule="evenodd"></path>
+													</svg>
+												</span>
+											{/if}
+										{:else}
+											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900">
+												<svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
+													<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+												</svg>
+											</span>
+										{/if}
 									{:else if event.type === "transaction"}
 										{#if event.status == "started"}
 											{#if event.subject === "Transaction Restarted"}
