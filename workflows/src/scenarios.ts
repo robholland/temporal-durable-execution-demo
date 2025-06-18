@@ -25,6 +25,13 @@ export const scenarios: ScenarioConfig[] = [
     title: "Durable Execution: Ignoring the Monkey",
     workflowFile: "scenario-4.ts",
     showChaosButton: true
+  },
+  {
+    scenarioNumber: 5,
+    title: "Durable Execution: Chaos vs Process",
+    workflowFile: "scenario-5.ts",
+    cardBalance: 5.00, // Low balance to trigger charge failures
+    showChaosButton: true
   }
 ];
 

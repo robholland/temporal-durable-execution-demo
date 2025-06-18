@@ -275,6 +275,23 @@
 			<img src="{logo}" class="me-2 h-12 sm:h-9" alt="Temporal Logo" />
 			<span class="self-center whitespace-nowrap text-xl font-semibold dark:text-white">Durable Execution</span>
 		</NavBrand>
+		
+		<!-- Scenario Navigation in Navbar -->
+		{#if scenarios.length > 0}
+			<div class="flex items-center space-x-4 text-sm">
+				<Button color="light" size="xs" on:click={prevScenario} disabled={currentScenario === 1}>
+					<ChevronLeftOutline class="w-3 h-3" />
+				</Button>
+				<div class="text-center px-2">
+					<div class="text-sm font-medium text-gray-900 dark:text-white">{scenarioTitle}</div>
+					<div class="text-xs text-gray-500 dark:text-gray-400">{currentScenario} of {scenarios.length}</div>
+				</div>
+				<Button color="light" size="xs" on:click={nextScenario} disabled={currentScenario === scenarios.length}>
+					<ChevronRightOutline class="w-3 h-3" />
+				</Button>
+			</div>
+		{/if}
+		
 		<NavHamburger />
 		<NavUl {activeUrl} class="mr-4">
 			<NavLi href="/" on:click={reset}>Reset</NavLi>
@@ -284,22 +301,6 @@
 
 	<div class="mt-20">
 		{#if scenarios.length > 0}
-			<!-- Scenario Navigation -->
-			<div class="mb-6 flex items-center justify-between bg-white dark:bg-gray-900 border border-gray-200 rounded-lg p-4 dark:border-gray-600 dark:bg-gray-700">
-				<Button color="light" size="sm" on:click={prevScenario} disabled={currentScenario === 1}>
-					<ChevronLeftOutline class="w-4 h-4 mr-2" />
-					Previous
-				</Button>
-				<div class="text-center">
-					<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{scenarioTitle}</h1>
-					<p class="text-sm text-gray-500 dark:text-gray-400">Scenario {currentScenario} of {scenarios.length}</p>
-				</div>
-				<Button color="light" size="sm" on:click={nextScenario} disabled={currentScenario === scenarios.length}>
-					Next
-					<ChevronRightOutline class="w-4 h-4 ml-2" />
-				</Button>
-			</div>
-
 			<!-- Scenario Description -->
 			{#if currentScenarioConfig?.description}
 				<div class="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
