@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client';
 import type { Email, EmailMsg, TransactionStep, TransactionMsg } from './lib/types';
-import { ApplicationFailure } from '@temporalio/activity'
+import { ApplicationFailure, CancelledFailure, heartbeat } from '@temporalio/activity'
 
 const socket = io("http://localhost:5173/");
 
@@ -27,6 +27,7 @@ export async function chargeCard(customerEmail: string, amount: number): Promise
 
   return new Promise((resolve, reject) => {
     socket.emit('transaction', { step } as TransactionMsg, (response: any) => {
+
       if (response.error) {
         if (response.error.includes('Insufficient balance')) {
           reject(ApplicationFailure.create({ nonRetryable: true, message: 'Card declined: insufficient funds' }));
@@ -50,6 +51,7 @@ export async function reserveStock(productName: string): Promise<void> {
 
   return new Promise((resolve, reject) => {
     socket.emit('transaction', { step } as TransactionMsg, (response: any) => {
+
       if (response.error) {
         reject(response.error);
       } else {

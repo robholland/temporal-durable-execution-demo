@@ -32,7 +32,30 @@ export const scenarios: ScenarioConfig[] = [
     workflowFile: "scenario-5.ts",
     cardBalance: 5.00, // Low balance to trigger charge failures
     showChaosButton: true
+  },
+  {
+    scenarioNumber: 6,
+    title: "Manual Retry: Not much fun",
+    workflowFile: "scenario-6.ts",
+    showChaosButton: true
+  },
+  {
+    scenarioNumber: 7,
+    title: "The Worst (?) Kind of Chaos",
+    workflowFile: "scenario-7.ts",
+    showChaosButton: true,
+    showCrashButton: true,
+    crashButtonBehaviour: 'lost',
+  },
+  {
+    scenarioNumber: 8,
+    title: "Never forget",
+    workflowFile: "scenario-8.ts",
+    showChaosButton: true,
+    showCrashButton: true,
+    crashButtonBehaviour: 'reset',
   }
+
 ];
 
 // retryPolicy: {

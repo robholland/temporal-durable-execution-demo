@@ -38,4 +38,6 @@ export interface ScenarioConfig {
   workflowFile: string;
   cardBalance?: number;
   showChaosButton?: boolean;
+  showCrashButton?: boolean;
+  crashButtonBehaviour?: 'lost' | 'restart' | 'replay'
 }

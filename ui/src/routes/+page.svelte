@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { browser } from '$app/environment';
 	import { io, Socket } from 'socket.io-client';
 	import { Navbar, NavBrand, NavLi, NavUl, NavHamburger, Spinner, Button } from 'flowbite-svelte';
 	import { Timeline, TimelineItem } from 'flowbite-svelte';
   import { ExclamationCircleSolid, UserCircleSolid, FlagSolid, ChevronLeftOutline, ChevronRightOutline, CreditCardSolid, TruckSolid } from 'flowbite-svelte-icons';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import type { EmailMsg, ToggleEmailServiceMsg, ScenarioMsg, WorkflowCodeMsg, DeployMsg, ScenarioConfig, ScenariosListMsg, TransactionInput, TransactionStep, TransactionMsg, StepInteractionMsg, CardBalanceMsg } from '../lib/types';
 	import logo from '$lib/images/Temporal_Symbol_dark_1_2x.png';
 	import Highlight, { LineNumbers } from 'svelte-highlight';
@@ -140,7 +141,7 @@
 		socket.emit('deploy', { email: customerEmail } as DeployMsg);
 	}
 
-	const handleStepInteraction = (stepId: string, action: 'success' | 'fail' | 'predetermined-fail') => {
+	const handleStepInteraction = (stepId: string, action: 'success' | 'fail' | 'predetermined-fail' | 'crash') => {
 		console.log(`Step interaction: ${stepId} -> ${action}`);
 		socket.emit('stepInteraction', { stepId, action } as StepInteractionMsg);
 	}
@@ -163,8 +164,43 @@
 		}
 	}
 
+	const handleCrash = (event: TransactionEvent) => {
+		if (event.stepId) {
+			handleStepInteraction(event.stepId, 'crash');
+		}
+	}
+
+	const handleKeyDown = (event: KeyboardEvent) => {
+		// Don't handle arrow keys if user is typing in an input field
+		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+			return;
+		}
+		
+		// Only handle arrow keys if scenarios are loaded
+		if (scenarios.length === 0) {
+			return;
+		}
+		
+		if (event.key === 'ArrowLeft') {
+			event.preventDefault();
+			if (currentScenario > 1) {
+				prevScenario();
+			}
+		} else if (event.key === 'ArrowRight') {
+			event.preventDefault();
+			if (currentScenario < scenarios.length) {
+				nextScenario();
+			}
+		}
+	}
+
 	onMount(() => {
 		socket = io();
+
+		// Add keyboard event listener for arrow key navigation
+		if (browser) {
+			window.addEventListener('keydown', handleKeyDown);
+		}
 
 		socket.on('workflow:code', (msg: WorkflowCodeMsg) => {
 			workflowCode = msg.code;
@@ -202,6 +238,12 @@
 			active = false;
 			events = [...events, { time: new Date().toTimeString(), type: 'transaction', status: "failed", subject: 'Transaction Failed' }];
 			highlightLines = [];
+		})
+
+		socket.on('transaction:restarted', () => {
+			console.log('Transaction restarted');
+			active = true;
+			events = [...events, { time: new Date().toTimeString(), type: 'transaction', status: "started", subject: 'Transaction Restarted', details: 'Process crashed, transaction restarted' }];
 		})
 
 		socket.on('transaction:step', (msg: TransactionMsg) => {
@@ -260,6 +302,13 @@
 				loadScenario();
 			}
 		}, 100);
+	});
+
+	onDestroy(() => {
+		// Clean up keyboard event listener
+		if (browser) {
+			window.removeEventListener('keydown', handleKeyDown);
+		}
 	});
 </script>
 
@@ -396,9 +445,17 @@
 										{@html getStepIcon(event.subject, event.status, event.failureSource)}
 									{:else if event.type === "transaction"}
 										{#if event.status == "started"}
-											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900">
-												<UserCircleSolid class="w-4 h-4 text-green-600 dark:text-green-400" />
-											</span>
+											{#if event.subject === "Transaction Restarted"}
+												<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-orange-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-orange-900">
+													<svg class="w-4 h-4 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+														<path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"></path>
+													</svg>
+												</span>
+											{:else}
+												<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900">
+													<UserCircleSolid class="w-4 h-4 text-green-600 dark:text-green-400" />
+												</span>
+											{/if}
 										{:else if event.status == "completed"}
 											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900">
 												<FlagSolid class="w-4 h-4 text-green-600 dark:text-green-400" />
@@ -444,6 +501,17 @@
 												class="font-normal"
 											>
 												🐵 Chaos
+											</Button>
+										{/if}
+										{#if currentScenarioConfig?.showCrashButton}
+											<Button 
+												size="xs" 
+												outline 
+												color="purple" 
+												on:click={() => handleCrash(event)}
+												class="font-normal"
+											>
+												💀 Crash
 											</Button>
 										{/if}
 									</div>

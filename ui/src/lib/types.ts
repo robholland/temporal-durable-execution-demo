@@ -20,10 +20,12 @@ export type ScenarioMsg = {
 export type ScenarioConfig = {
   scenarioNumber: number;
   title: string;
-  description: string;
+  description?: string;
   workflowFile: string;
   cardBalance?: number;
   showChaosButton?: boolean;
+  showCrashButton?: boolean;
+  crashButtonBehaviour?: 'lost' | 'reset' | 'replay';
 }
 
 export type ScenariosListMsg = {
@@ -69,9 +71,14 @@ export type DeployMsg = {
 
 export type StepInteractionMsg = {
   stepId: string;
-  action: 'success' | 'fail' | 'predetermined-fail';
+  action: 'success' | 'fail' | 'predetermined-fail' | 'crash';
 }
 
 export type CardBalanceMsg = {
   balance: number;
+}
+
+export type CrashMsg = {
+  stepId: string;
+  behaviour: 'lost' | 'reset' | 'replay';
 }

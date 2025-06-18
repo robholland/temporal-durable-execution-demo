@@ -21,6 +21,7 @@ const webSocketServer = {
 		let emailServiceStatus: boolean = true;
 		let currentScenario: number = 1;
 		let currentCardBalance: number = 50.00; // Default card balance
+		let currentWorkflowId: string | null = null; // Track current workflow ID
 
 		// Store pending transaction steps with their callbacks and timeouts
 		const pendingSteps = new Map<string, {
@@ -52,6 +53,16 @@ const webSocketServer = {
 			} else {
 				currentCardBalance = 50.00; // Reset to default
 				console.log(`Reset card balance to default £${currentCardBalance.toFixed(2)} for scenario ${scenarioNumber}`);
+			}
+
+			installScenarioWorkflow(scenarioNumber);
+		}
+
+		const installScenarioWorkflow = (scenarioNumber: number) => {
+			const scenario = getScenario(scenarioNumber);
+			if (!scenario) {
+				console.error(`Scenario ${scenarioNumber} not found`);
+				return;
 			}
 
 			try {
@@ -119,6 +130,56 @@ const webSocketServer = {
 			}
 		}
 
+		const startPollerForWorkflow = (workflowId: string, socket: any) => {
+			// Clear existing poller if any
+			if (poller) {
+				clearInterval(poller);
+				poller = undefined;
+			}
+
+			poller = setInterval(async () => {
+				try {
+					const trace = await fetchEnhancedStackTrace(workflowId);
+					const location = trace.stacks[0].locations[0];
+					const workflowPath = location.file_path;
+					if (workflowPath) {
+						const fullCode = fs.readFileSync(workflowPath, 'utf-8');
+						const { processedCode, lineOffset } = processWorkflowCode(fullCode);
+						const adjustedLine = location.line ? Math.max(1, location.line - lineOffset) : 1;
+						
+						socket.emit('workflow:code', {
+							name: location.function_name,
+							code: processedCode,
+							line: adjustedLine,
+						} as WorkflowCodeMsg);
+					}
+					console.dir(trace, { depth: null });
+				} catch (err) {
+					console.error('Failed to fetch enhanced stack trace', err);
+				}
+			}, 250);
+
+			// Get handle and set up result handlers
+			const handle = sdkClient.workflow.getHandle(workflowId);
+			handle.result()
+			.then(() => {
+				console.log('Transaction completed');
+				socket.emit('transaction:completed');
+				currentWorkflowId = null; // Clear workflow ID on completion
+
+				clearInterval(poller);
+				poller = undefined;
+			})
+			.catch((err) => {
+				console.log('Transaction failed', err);
+				socket.emit('transaction:failed');
+				currentWorkflowId = null; // Clear workflow ID on failure
+
+				clearInterval(poller);
+				poller = undefined;
+			});
+		}
+
 		// Load initial scenario
 		loadScenarioWorkflow(currentScenario);
 
@@ -147,47 +208,13 @@ const webSocketServer = {
 					}
 				)
 				.then((handle) => {
+					currentWorkflowId = wfId; // Track the current workflow ID
 					console.log('Transaction started');
 					socket.emit('transaction:started');
 					cb({});
 
-					poller = setInterval(async () => {
-						try {
-							const trace = await fetchEnhancedStackTrace(wfId);
-							const location = trace.stacks[0].locations[0];
-							const workflowPath = location.file_path;
-							if (workflowPath) {
-								const fullCode = fs.readFileSync(workflowPath, 'utf-8');
-								const { processedCode, lineOffset } = processWorkflowCode(fullCode);
-								const adjustedLine = location.line ? Math.max(1, location.line - lineOffset) : 1;
-								
-								socket.emit('workflow:code', {
-									name: location.function_name,
-									code: processedCode,
-									line: adjustedLine,
-								} as WorkflowCodeMsg);
-							}
-							console.dir(trace, { depth: null });
-						} catch (err) {
-							console.error('Failed to fetch enhanced stack trace', err);
-						}
-					}, 250);
-
-					handle.result()
-					.then(() => {
-						console.log('Transaction completed');
-						socket.emit('transaction:completed');
-
-						clearInterval(poller);
-						poller = undefined;
-					})
-					.catch((err) => {
-						console.log('Transaction failed', err);
-						socket.emit('transaction:failed');
-
-						clearInterval(poller);
-						poller = undefined;
-					});
+					// Start the poller for this workflow
+					startPollerForWorkflow(wfId, socket);
 				})
 				.catch((err) => { cb({ error: err }); });
 			});
@@ -395,6 +422,69 @@ const webSocketServer = {
 						console.log('Transaction step failed (predetermined error triggered early)', failedStep);
 						io.emit('transaction:step', { step: failedStep });
 						pendingData.callback({ error: errorMessage });
+					} else if (action === 'crash') {
+						// Handle crash - fail with predetermined error so activity won't retry
+						const stepName = stepId.split('-')[0];
+						const scenario = getScenario(currentScenario);
+						const crashBehaviour = scenario?.crashButtonBehaviour || 'replay';
+						
+						console.log(`Crash action received: stepId=${stepId}, behaviour=${crashBehaviour}`);
+						
+						// Fail the step with a predetermined crash error
+						const failedStep = { 
+							stepName, 
+							status: 'failed' as const, 
+							stepId, 
+							time: new Date().toTimeString(), 
+							details: `Process crashed (${crashBehaviour})`,
+							failureSource: 'automatic' as const 
+						};
+						console.log('Transaction step failed (crash)', failedStep);
+						io.emit('transaction:step', { step: failedStep });
+						pendingData.callback({ error: `Process crashed (${crashBehaviour})` });
+						
+						// Handle the crash based on behaviour
+						if (crashBehaviour === 'lost') {
+							// Terminate the workflow
+							if (currentWorkflowId) {
+								try {
+									console.log(`Terminating workflow ${currentWorkflowId} due to crash with "lost" behaviour`);
+									const handle = sdkClient.workflow.getHandle(currentWorkflowId);
+									await handle.terminate('Workflow crashed - process lost');
+									currentWorkflowId = null;
+								} catch (err) {
+									console.error('Failed to terminate workflow:', err);
+								}
+							} else {
+								console.log('No active workflow to terminate');
+							}
+						} else if (crashBehaviour === 'reset') {
+							// Use resetWorkflowExecution
+							if (currentWorkflowId) {
+								try {
+									console.log(`Resetting workflow ${currentWorkflowId} due to crash with "reset" behaviour`);
+									await resetWorkflowExecution(currentWorkflowId);
+									
+									// Emit transaction restarted event to make it clear what happened
+									socket.emit('transaction:restarted');
+									
+									// Restart the poller for the reset workflow
+									console.log(`Restarting poller for reset workflow ${currentWorkflowId}`);
+									startPollerForWorkflow(currentWorkflowId, socket);
+								} catch (err) {
+									console.error('Failed to reset workflow:', err);
+								}
+							} else {
+								console.log('No active workflow to reset');
+							}
+						} else if (crashBehaviour === 'replay') {
+							// No specific action needed - Temporal will naturally replay
+							console.log('Crash with "replay" behaviour - letting Temporal handle replay naturally');
+							// The worker restart will cause the workflow to replay from the last checkpoint
+						}
+
+						// Re-copy workflow file to trigger worker restart
+						installScenarioWorkflow(currentScenario);
 					} else {
 						// Manual failure (chaos monkey)
 						const stepName = stepId.split('-')[0];
@@ -415,6 +505,8 @@ const webSocketServer = {
 					pendingSteps.delete(stepId);
 				}
 			});
+
+
 		});
 	}
 }
