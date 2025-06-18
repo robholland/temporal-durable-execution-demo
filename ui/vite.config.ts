@@ -3,7 +3,7 @@ import { type ViteDevServer, defineConfig } from 'vite';
 import { Server } from 'socket.io';
 import { createConnection, getEnv } from './src/lib/server/temporal';
 import { Client } from '@temporalio/client';
-import type { DeployMsg, EmailMsg, TransactionInput, ScenarioMsg, ToggleEmailServiceMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg, StepInteractionMsg, CardBalanceMsg, WorkerEventMsg } from './src/lib/types';
+import type { TransactionInput, ScenarioMsg, WorkflowCodeMsg, ScenariosListMsg, TransactionMsg, StepInteractionMsg, CardBalanceMsg, WorkerEventMsg } from './src/lib/types';
 import { getAllScenarios, getScenario } from '../workflows/src/scenarios';
 import fs from 'fs';
 import proto from '@temporalio/proto';
