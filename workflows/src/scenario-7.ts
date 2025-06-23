@@ -3,7 +3,7 @@ import { proxyActivities } from '@temporalio/workflow';
 import type { TransactionInput } from './lib/types';
 
 const { chargeCard, reserveStock, shipItem, sendReceipt, sendChargeFailureEmail } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '10 seconds',
+  startToCloseTimeout: '5 seconds',
   retry: {
     initialInterval: '1 second',
     backoffCoefficient: 1,

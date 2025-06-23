@@ -35,7 +35,7 @@ export const scenarios: ScenarioConfig[] = [
   },
   {
     scenarioNumber: 6,
-    title: "The Worst (?) Kind of Chaos",
+    title: "The Worst (?) Kind of Chaos: Process Death",
     workflowFile: "scenario-6.ts",
     showChaosButton: true,
     showCrashButton: true,

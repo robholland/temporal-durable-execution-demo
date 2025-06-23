@@ -1,9 +1,9 @@
 import * as activities from './activities';
-import { proxyActivities, proxyLocalActivities,sleep as temporalSleep } from '@temporalio/workflow';
+import { proxyActivities, proxyLocalActivities, sleep as temporalSleep } from '@temporalio/workflow';
 import type { TransactionInput } from './lib/types';
 
 const { chargeCard, reserveStock, shipItem, sendReceipt, sendChargeFailureEmail, sendReviewRequest } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '10 seconds',
+  startToCloseTimeout: '5 seconds',
   retry: {
     initialInterval: '1 second',
     backoffCoefficient: 1,
@@ -11,7 +11,7 @@ const { chargeCard, reserveStock, shipItem, sendReceipt, sendChargeFailureEmail,
 });
 
 const { pendingSleep, completeSleep } = proxyLocalActivities<typeof activities>({
-  startToCloseTimeout: '10 seconds',
+  startToCloseTimeout: '1 seconds',
   retry: {
     initialInterval: '1 second',
     backoffCoefficient: 1,
