@@ -14,7 +14,7 @@ The demo will use Temporal, an open source Durable Execution platform with broad
 
 In `ui/`: `npm install`
 
-In `worker/`: `npm install`
+In `workflows/`: `npm install`
 
 # Run
 
@@ -22,6 +22,12 @@ From `./ui`: `npm run dev`
 
 Open http://localhost:5173
 
-From `./worker`: `npm run worker.watch`
+From `./workflows`: `npm run worker.watch`
+
+# Development
+
+If you make changes to, or add/remove scenarios, you must re-bundle so that the worker can find the code.
+
+From `./workflows`: `npm run bundle`
 
 Enjoy :)
