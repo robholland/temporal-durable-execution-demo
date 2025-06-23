@@ -39,5 +39,6 @@ export interface ScenarioConfig {
   cardBalance?: number;
   showChaosButton?: boolean;
   showCrashButton?: boolean;
-  crashButtonBehaviour?: 'lost' | 'reset' | 'replay'
+  crashButtonBehaviour?: 'lost' | 'reset' | 'replay';
+  buggySteps?: string[];
 }

@@ -26,6 +26,7 @@ export type ScenarioConfig = {
   showChaosButton?: boolean;
   showCrashButton?: boolean;
   crashButtonBehaviour?: 'lost' | 'reset' | 'replay';
+  buggySteps?: string[];
 }
 
 export type ScenariosListMsg = {
@@ -47,8 +48,9 @@ export type TransactionStep = {
   details?: string;
   amount?: number;
   stepId?: string;
-  failureSource?: 'user' | 'automatic';
+  failureSource?: 'user' | 'automatic' | 'buggy';
   predeterminedError?: string;
+  isBuggy?: boolean;
 }
 
 export type TransactionMsg = {
@@ -71,7 +73,7 @@ export type DeployMsg = {
 
 export type StepInteractionMsg = {
   stepId: string;
-  action: 'success' | 'fail' | 'predetermined-fail' | 'crash';
+  action: 'success' | 'fail' | 'predetermined-fail' | 'crash' | 'deploy-fix' | 'bug-fail';
 }
 
 export type CardBalanceMsg = {

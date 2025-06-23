@@ -1,4 +1,4 @@
-import { ScenarioConfig } from './lib/types';
+import type { ScenarioConfig } from './lib/types';
 
 export const scenarios: ScenarioConfig[] = [
   {
@@ -59,11 +59,17 @@ export const scenarios: ScenarioConfig[] = [
   },
   {
     scenarioNumber: 9,
-    title: "Durable Execution: Learning what is possible",
+    title: "Durable Execution: Long running workflows",
     workflowFile: "scenario-9.ts",
     showCrashButton: true,
     crashButtonBehaviour: 'replay',
-  }
+  },
+  {
+    scenarioNumber: 10,
+    title: "Durable Execution: Deploying fixes",
+    workflowFile: "scenario-10.ts",
+    buggySteps: ["Reserve Stock"],
+  },
 ];
 
 // retryPolicy: {

@@ -33,8 +33,9 @@
 		details?: string;
 		amount?: number;
 		stepId?: string;
-		failureSource?: 'user' | 'automatic';
+		failureSource?: 'user' | 'automatic' | 'buggy';
 		predeterminedError?: string;
+		isBuggy?: boolean;
 	}
 
 	let workflowCode = "";
@@ -79,7 +80,7 @@
 		return scenarios.find(s => s.scenarioNumber === currentScenario);
 	}
 
-	const getStepIcon = (stepName: string, status: TransactionEventStatus, failureSource?: 'user' | 'automatic') => {
+	const getStepIcon = (stepName: string, status: TransactionEventStatus, failureSource?: 'user' | 'automatic' | 'buggy') => {
 		const iconClass = "w-4 h-4";
 		
 		if (status === "completed") {
@@ -101,6 +102,9 @@
 			if (failureSource === "user") {
 				// Show monkey emoji for user-triggered failures
 				return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900"><span class="text-base">🐵</span></span>`;
+			} else if (failureSource === "buggy") {
+				// Show bug emoji for buggy step failures
+				return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900"><span class="text-base">🐛</span></span>`;
 			} else {
 				// Show standard error icon for automatic failures (like insufficient balance)
 				return `<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900"><svg class="${iconClass} text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg></span>`;
@@ -129,7 +133,7 @@
 		}
 	}
 
-	const handleStepInteraction = (stepId: string, action: 'success' | 'fail' | 'predetermined-fail' | 'crash') => {
+	const handleStepInteraction = (stepId: string, action: 'success' | 'fail' | 'predetermined-fail' | 'crash' | 'deploy-fix' | 'bug-fail') => {
 		console.log(`Step interaction: ${stepId} -> ${action}`);
 		socket.emit('stepInteraction', { stepId, action } as StepInteractionMsg);
 	}
@@ -155,6 +159,18 @@
 	const handleCrash = (event: TransactionEvent) => {
 		if (event.stepId) {
 			handleStepInteraction(event.stepId, 'crash');
+		}
+	}
+
+	const handleDeployFix = (event: TransactionEvent) => {
+		if (event.stepId) {
+			handleStepInteraction(event.stepId, 'deploy-fix');
+		}
+	}
+
+	const handleBugFail = (event: TransactionEvent) => {
+		if (event.stepId) {
+			handleStepInteraction(event.stepId, 'bug-fail');
 		}
 	}
 
@@ -246,7 +262,8 @@
 				amount: msg.step.amount,
 				stepId: msg.step.stepId,
 				failureSource: msg.step.failureSource,
-				predeterminedError: msg.step.predeterminedError
+				predeterminedError: msg.step.predeterminedError,
+				isBuggy: msg.step.isBuggy
 			};
 
 			// Check if we already have an event with the same stepId
@@ -297,6 +314,8 @@
 				details: msg.details || msg.error
 			}];
 		});
+
+
 
 		socket.emit('getEmailServiceStatus');
 		socket.emit('getScenario');
@@ -501,25 +520,34 @@
 								
 								{#if event.type === "step" && event.status === "pending" && event.stepId}
 									<div class="mt-3 flex gap-2">
-																		{#if event.predeterminedError}
-									<Button 
-										size="sm" 
-										color="red" 
-										on:click={() => handlePredeterminedFail(event)}
-										class="font-medium"
-									>
-										😢 Sad
-									</Button>
-								{:else}
-									<Button 
-										size="sm" 
-										color="green" 
-										on:click={() => handleStepSuccess(event)}
-										class="font-medium"
-									>
-										😊 Happy
-									</Button>
-								{/if}
+										{#if event.predeterminedError}
+											<Button 
+												size="sm" 
+												color="red" 
+												on:click={() => handlePredeterminedFail(event)}
+												class="font-medium"
+											>
+												😢 Sad
+											</Button>
+										{:else if event.isBuggy}
+											<Button 
+												size="sm" 
+												color="red" 
+												on:click={() => handleBugFail(event)}
+												class="font-medium"
+											>
+												🐛 Bug
+											</Button>
+										{:else}
+											<Button 
+												size="sm" 
+												color="green" 
+												on:click={() => handleStepSuccess(event)}
+												class="font-medium"
+											>
+												😊 Happy
+											</Button>
+										{/if}
 										{#if currentScenarioConfig?.showChaosButton}
 											<Button 
 												size="xs" 
@@ -540,6 +568,17 @@
 												class="font-normal"
 											>
 												💀 Crash
+											</Button>
+										{/if}
+										{#if event.isBuggy}
+											<Button 
+												size="xs" 
+												outline 
+												color="yellow" 
+												on:click={() => handleDeployFix(event)}
+												class="font-normal"
+											>
+												🚀 Deploy Fix
 											</Button>
 										{/if}
 									</div>

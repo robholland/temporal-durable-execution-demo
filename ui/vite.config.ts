@@ -21,6 +21,7 @@ const webSocketServer = {
 		let currentScenario: number = 1;
 		let currentCardBalance: number = 50.00; // Default card balance
 		let currentWorkflowId: string | null = null; // Track current workflow ID
+		let currentBuggySteps: string[] = []; // Track buggy steps for current scenario instance
 
 		// Store pending transaction steps with their callbacks and timeouts
 		const pendingSteps = new Map<string, {
@@ -53,6 +54,10 @@ const webSocketServer = {
 				currentCardBalance = 50.00; // Reset to default
 				console.log(`Reset card balance to default £${currentCardBalance.toFixed(2)} for scenario ${scenarioNumber}`);
 			}
+
+			// Reset buggy steps for new scenario
+			currentBuggySteps = scenario.buggySteps ? [...scenario.buggySteps] : [];
+			console.log(`Reset buggy steps to:`, currentBuggySteps);
 
 			installScenarioWorkflow(scenarioNumber);
 		}
@@ -254,6 +259,9 @@ const webSocketServer = {
 				// Generate unique step ID
 				const stepId = `${step.stepName}-${Date.now()}-${Math.random()}`;
 				
+				// Check if this step is buggy
+				const isBuggyStep = currentBuggySteps.includes(step.stepName);
+				
 				// Special handling for "Charge Card" step - check balance automatically
 				if (step.stepName === "Charge Card") {
 					const chargeAmount = step.amount || 0;
@@ -304,11 +312,58 @@ const webSocketServer = {
 					}
 				}
 				
+				// Special handling for buggy steps - they auto-fail with retryable error
+				if (isBuggyStep) {
+					const pendingStep = { 
+						...step, 
+						status: 'pending' as const, 
+						stepId,
+						isBuggy: true,
+					};
+					
+					console.log('Transaction step pending (buggy step)', pendingStep);
+					io.emit('transaction:step', { step: pendingStep });
+					
+					// Set up timeout for auto-failure with retryable bug error
+					const timeout = setTimeout(() => {
+						if (pendingSteps.has(stepId)) {
+							const bugError = `${step.stepName} failed due to code bug`;
+							
+							const failedStep = { 
+								...step, 
+								status: 'failed' as const, 
+								stepId,
+								details: bugError,
+								failureSource: 'buggy' as const
+							};
+							
+							console.log('Transaction step auto-failed (buggy step timeout)', failedStep);
+							io.emit('transaction:step', { step: failedStep });
+							
+							const pendingData = pendingSteps.get(stepId);
+							if (pendingData) {
+								// Return retryable error (no non-retryable flag)
+								pendingData.callback({ error: bugError });
+								pendingSteps.delete(stepId);
+							}
+						}
+					}, STEP_TIMEOUT);
+					
+					// Store the pending step
+					pendingSteps.set(stepId, {
+						callback: cb,
+						timeout,
+						step
+					});
+					return;
+				}
+				
 				// Special handling for "Sleep" step - no auto-completion, workflow controls timing
 				if (step.stepName === "Sleep") {
 					const pendingStep = { 
 						...step, 
 						stepId,
+						isBuggy: false,
 					};
 					
 					console.log('Sleep step (no auto-completion)', pendingStep);
@@ -329,6 +384,7 @@ const webSocketServer = {
 					...step, 
 					status: 'pending' as const, 
 					stepId,
+					isBuggy: false,
 				};
 				
 				console.log('Transaction step pending user interaction', pendingStep);
@@ -475,6 +531,50 @@ const webSocketServer = {
 
 						// Re-copy workflow file to trigger worker restart
 						installScenarioWorkflow(currentScenario);
+					} else if (action === 'deploy-fix') {
+						// Handle deploy fix - remove step from buggy list and trigger replay
+						const stepName = stepId.split('-')[0];
+						
+						// Remove step from buggy steps list
+						const stepIndex = currentBuggySteps.indexOf(stepName);
+						if (stepIndex > -1) {
+							currentBuggySteps.splice(stepIndex, 1);
+							console.log(`Removed ${stepName} from buggy steps. Current buggy steps:`, currentBuggySteps);
+						}
+						
+
+						
+						// Fail the current step (so it will retry)
+						const failedStep = { 
+							stepName, 
+							status: 'failed' as const, 
+							stepId, 
+							time: new Date().toTimeString(), 
+							details: `Bug fix deployed`,
+							failureSource: 'automatic' as const 
+						};
+						console.log('Transaction step failed (deploy fix)', failedStep);
+						io.emit('transaction:step', { step: failedStep });
+						pendingData.callback({ error: 'Bug fix deployed' });
+
+						// Re-copy workflow file to trigger worker restart (which will cause replay)
+						installScenarioWorkflow(currentScenario);
+					} else if (action === 'bug-fail') {
+						// Handle bug fail - immediately fail with bug error (skip timeout)
+						const stepName = stepId.split('-')[0];
+						const bugError = `${stepName} failed due to code bug`;
+						
+						const failedStep = { 
+							stepName, 
+							status: 'failed' as const, 
+							stepId, 
+							time: new Date().toTimeString(), 
+							details: bugError,
+							failureSource: 'buggy' as const 
+						};
+						console.log('Transaction step failed (bug fail - user triggered)', failedStep);
+						io.emit('transaction:step', { step: failedStep });
+						pendingData.callback({ error: bugError });
 					} else {
 						// Manual failure (chaos monkey)
 						const stepName = stepId.split('-')[0];
