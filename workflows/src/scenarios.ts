@@ -59,16 +59,16 @@ export const scenarios: ScenarioConfig[] = [
   },
   {
     scenarioNumber: 9,
-    title: "Durable Execution: Long running workflows",
+    title: "Durable Execution: Deploying fixes",
     workflowFile: "scenario-9.ts",
-    showCrashButton: true,
-    crashButtonBehaviour: 'replay',
+    buggySteps: ["Reserve Stock"],
   },
   {
     scenarioNumber: 10,
-    title: "Durable Execution: Deploying fixes",
+    title: "Durable Execution: Long running workflows",
     workflowFile: "scenario-10.ts",
-    buggySteps: ["Reserve Stock"],
+    showCrashButton: true,
+    crashButtonBehaviour: 'replay',
   },
 ];
 
