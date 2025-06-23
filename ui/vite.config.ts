@@ -70,10 +70,12 @@ const webSocketServer = {
 			}
 
 			try {
-				fs.copyFileSync(`../workflows/src/${scenario.workflowFile}`, '../workflows/src/workflows.ts');
-				console.log(`Loaded scenario ${scenarioNumber} workflow from ${scenario.workflowFile}`);
+				// Convert scenario-1.ts -> scenario-1-bundle.js
+				const bundleFile = scenario.workflowFile.replace('.ts', '-bundle.js');
+				fs.copyFileSync(`../workflows/src/${bundleFile}`, '../workflows/src/workflow-bundle.js');
+				console.log(`Loaded scenario ${scenarioNumber} workflow bundle from ${bundleFile}`);
 			} catch (err) {
-				console.error(`Failed to load scenario ${scenarioNumber} workflow:`, err);
+				console.error(`Failed to load scenario ${scenarioNumber} workflow bundle:`, err);
 			}
 		}
 
@@ -541,8 +543,6 @@ const webSocketServer = {
 							currentBuggySteps.splice(stepIndex, 1);
 							console.log(`Removed ${stepName} from buggy steps. Current buggy steps:`, currentBuggySteps);
 						}
-						
-
 						
 						// Fail the current step (so it will retry)
 						const failedStep = { 

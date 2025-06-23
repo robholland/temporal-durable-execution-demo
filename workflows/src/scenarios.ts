@@ -72,12 +72,6 @@ export const scenarios: ScenarioConfig[] = [
   },
 ];
 
-// retryPolicy: {
-//   maximumAttempts: Infinity,
-//   backoffCoefficient: 1,
-//   initialInterval: "5 seconds"
-// }
-
 export function getScenario(scenarioNumber: number): ScenarioConfig | undefined {
   return scenarios.find(s => s.scenarioNumber === scenarioNumber);
 }

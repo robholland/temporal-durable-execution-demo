@@ -56,7 +56,9 @@ async function run({
     const worker = await Worker.create({
       connection,
       namespace,
-      workflowsPath: require.resolve('./workflows'),
+      workflowBundle: {
+        codePath: require.resolve('./workflow-bundle.js')
+      },
       taskQueue,
       activities,
     });

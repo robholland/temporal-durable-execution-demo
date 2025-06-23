@@ -2,8 +2,9 @@
 	"name": "signup-demo-workflows",
 	"version": "0.0.1",
 	"scripts": {
+		"bundle": "ts-node src/scripts/bundle.ts",
 		"worker": "ts-node src/worker.ts",
-		"worker.watch": "nodemon src/worker.ts"
+		"worker.watch": "nodemon --watch src/workflow-bundle.js src/worker.ts"
 	},
 	"devDependencies": {
 		"@tsconfig/node18": "^1.0.3",
